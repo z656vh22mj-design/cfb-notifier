@@ -1,6 +1,8 @@
 import os
 import json
 import requests
+from datetime import datetime
+import pytz
 
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 STATE_FILE = "game_state.json"
@@ -32,9 +34,6 @@ def get_live_scoreboard():
         return None
 
 def get_broadcast_network(competition):
-    """
-    Extracts TV network short name (e.g., ABC, FOX, ESPN, CBS) from competition broadcasts.
-    """
     try:
         broadcasts = competition.get("broadcasts", [])
         if broadcasts:
@@ -83,22 +82,18 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
 
     score = 0.0
 
-    # 1. Base Score from Quarter
     score += period * 100
 
-    # 2. Closeness Bonus
     if diff <= 8:
         score += 300
     elif diff <= 17:
         score += 100
 
-    # 3. Live Win Probability Closeness Boost
     if home_wp is not None:
         wp_margin = abs(home_wp - 0.50)
         wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 1000)
         score += wp_closeness_bonus
 
-    # 4. EXTREME LATE-GAME DRAMA MULTIPLIER
     if period >= 4 and diff <= 8:
         time_elapsed_pct = (900 - min(clock_seconds, 900)) / 900.0
         late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)
@@ -106,7 +101,6 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
             late_game_boost += 1500.0
         score += late_game_boost
 
-    # 5. Team Ranks & Upset Potential
     home_rank = int(home.get("curatedRank", {}).get("current", 99))
     away_rank = int(away.get("curatedRank", {}).get("current", 99))
     
@@ -120,14 +114,12 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
 
     quarter_upset_weight = min(1.0, period * 0.25)
 
-    # TOP 10 UPSET ALERT
     if diff <= 8:
         if min_rank <= 10 and max_rank > 15:
             score += 2000.0 * quarter_upset_weight
         elif min_rank <= 25 and max_rank > 25:
             score += 400.0 * quarter_upset_weight
 
-    # Point Spread Upset Potential
     try:
         odds = event["competitions"][0].get("odds", [])
         if odds:
@@ -138,7 +130,6 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     except Exception:
         pass
 
-    # 6. Power 4 Preference
     score += 50
 
     return int(score)
@@ -236,9 +227,6 @@ def process_games():
         tv_channel = get_broadcast_network(competition)
         tv_str = f" `[{tv_channel}]`" if tv_channel else ""
 
-        # -------------------------------------------------------------
-        # 1. PROCESS ACTIVE LIVE GAMES
-        # -------------------------------------------------------------
         if status_state == "in" and period > 0 and diff <= 17:
             clock = event["status"].get("displayClock", "0:00")
             clock_seconds = parse_clock_to_seconds(clock)
@@ -265,9 +253,6 @@ def process_games():
                 "clock_seconds": clock_seconds
             })
 
-        # -------------------------------------------------------------
-        # 2. PROCESS COMPLETED PLAYOFF-IMPACT GAMES
-        # -------------------------------------------------------------
         elif status_state == "post":
             impact_score = calculate_playoff_impact(event)
             
@@ -303,13 +288,18 @@ def process_games():
 
     description_text = "\n\n---\n\n".join(content_sections)
 
+    central_tz = pytz.timezone("America/Chicago")
+    now_str = datetime.now(central_tz).strftime("%b %d, %Y at %I:%M %p %Z")
+
     embed_payload = {
         "embeds": [
             {
                 "title": "🏈 ESPN FBS LIVE SCOREBOARD",
                 "description": description_text,
                 "color": 15158332 if active_close_games else 3447003,
-                "footer": {"text": f"Live updates every 5 mins • {len(active_close_games)} active close game(s)"}
+                "footer": {
+                    "text": f"Live updates every 5 mins • {len(active_close_games)} active close game(s) • Last updated: {now_str}"
+                }
             }
         ]
     }
