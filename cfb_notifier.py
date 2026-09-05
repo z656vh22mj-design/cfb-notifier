@@ -227,6 +227,7 @@ def process_games():
         tv_channel = get_broadcast_network(competition)
         tv_str = f" `[{tv_channel}]`" if tv_channel else ""
 
+        # Filter active games: must be live, within 17 pts, and watchability score > 900
         if status_state == "in" and period > 0 and diff <= 17:
             clock = event["status"].get("displayClock", "0:00")
             clock_seconds = parse_clock_to_seconds(clock)
@@ -234,24 +235,25 @@ def process_games():
             home_wp, away_wp = get_game_win_probability(game_id)
             watch_score = calculate_watchability_score(event, diff, home_wp, away_wp)
 
-            period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
+            if watch_score > 900:
+                period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
 
-            if period >= 4 and diff <= 8:
-                icon = "🚨"
-            elif period >= 3 and diff <= 8:
-                icon = "🔥"
-            else:
-                icon = "🏈"
+                if period >= 4 and diff <= 8:
+                    icon = "🚨"
+                elif period >= 3 and diff <= 8:
+                    icon = "🔥"
+                else:
+                    icon = "🏈"
 
-            game_str = f"{icon} **{period_label} {clock}**  |  **{away_disp}** {away_score} @ **{home_disp}** {home_score}{tv_str}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
+                game_str = f"{icon} **{period_label} {clock}**  |  **{away_disp}** {away_score} @ **{home_disp}** {home_score}{tv_str}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
 
-            active_close_games.append({
-                "str": game_str,
-                "watch_score": watch_score,
-                "period": period,
-                "diff": diff,
-                "clock_seconds": clock_seconds
-            })
+                active_close_games.append({
+                    "str": game_str,
+                    "watch_score": watch_score,
+                    "period": period,
+                    "diff": diff,
+                    "clock_seconds": clock_seconds
+                })
 
         elif status_state == "post":
             impact_score = calculate_playoff_impact(event)
@@ -272,7 +274,7 @@ def process_games():
     )
 
     completed_impact_games.sort(key=lambda g: -g["impact_score"])
-    top_finals = completed_impact_games[:5]
+    top_finals = completed_impact_games[:15]
 
     content_sections = []
 
@@ -280,7 +282,7 @@ def process_games():
         live_text = "\n\n".join([g["str"] for g in active_close_games])
         content_sections.append(f"### 🔥 LIVE CLOSE GAMES\n{live_text}")
     else:
-        content_sections.append("### 🔥 LIVE CLOSE GAMES\n*No active FBS games currently within 17 points.*")
+        content_sections.append("### 🔥 LIVE CLOSE GAMES\n*No active FBS games currently with watchability over 900 points.*")
 
     if top_finals:
         finals_text = "\n".join([g["str"] for g in top_finals])
