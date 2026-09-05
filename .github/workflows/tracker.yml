@@ -5,14 +5,22 @@ on:
     # Runs every 5 minutes on Saturdays between 11:00 AM and 10:00 PM US Central Time
     - cron: '*/5 16-23 * * 6'
     - cron: '*/5 0-3 * * 0'
-  workflow_dispatch: # Allows manual trigger testing anytime
+  workflow_dispatch: # Allows manual testing anytime
 
 jobs:
   check-scores:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository Code
+      - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Restore Game State Cache
+        uses: actions/cache@v3
+        with:
+          path: game_state.json
+          key: game-state-${{ github.run_id }}
+          restore-keys: |
+            game-state-
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -24,6 +32,11 @@ jobs:
 
       - name: Run Score Checker
         env:
-          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
-          PUSHCUT_API_KEY: ${{ secrets.PUSHCUT_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python cfb_notifier.py
+
+      - name: Save Game State Cache
+        uses: actions/cache@v3
+        with:
+          path: game_state.json
+          key: game-state-${{ github.run_id }}
