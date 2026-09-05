@@ -34,16 +34,13 @@ def extract_underdog(event):
     except (IndexError, KeyError):
         return None
 
-def send_pushcut_alert(title, text):
+def send_pushcut_alert():
+    # Simple GET request to trigger the free Pushcut notification template
     url = f"https://api.pushcut.io/{PUSHCUT_API_KEY}/notifications/CFB%20Alert"
-    payload = {
-        "title": title,
-        "text": text
-    }
     try:
-        res = requests.post(url, json=payload, timeout=5)
+        res = requests.get(url, timeout=5)
         res.raise_for_status()
-        print(f"ALERT SENT: {title}")
+        print("ALERT SENT via Pushcut")
     except Exception as e:
         print(f"Error sending Pushcut alert: {e}")
 
@@ -54,6 +51,7 @@ def process_games():
         return
 
     events = data.get("events", [])
+    alert_needed = False
     
     for event in events:
         status = event["status"]["type"]["state"]
@@ -84,20 +82,11 @@ def process_games():
                 underdog_leading = True
 
         if is_close_game or underdog_leading:
-            clock = event["status"].get("displayClock", "0:00")
-            period = event["status"].get("period", 1)
+            alert_needed = True
+            print(f"Close game found: {away_name} {away_score} @ {home_name} {home_score}")
 
-            reasons = []
-            if is_close_game:
-                reasons.append(f"Diff: {diff} pts")
-            if underdog_leading:
-                reasons.append(f"Underdog Leading ({underdog_name})")
-
-            reason_str = " | ".join(reasons)
-            alert_title = f"🏈 CFB Alert [{reason_str}]"
-            alert_body = f"{away_name} {away_score} @ {home_name} {home_score} (Q{period} - {clock})"
-
-            send_pushcut_alert(alert_title, alert_body)
+    if alert_needed:
+        send_pushcut_alert()
 
 if __name__ == "__main__":
     process_games()
