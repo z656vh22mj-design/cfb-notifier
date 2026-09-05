@@ -11,7 +11,7 @@ jobs:
   check-scores:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository Code
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -21,7 +21,7 @@ jobs:
 
       - name: Install Dependencies
         run: pip install requests
-m
+
       - name: Run Score Checker
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
