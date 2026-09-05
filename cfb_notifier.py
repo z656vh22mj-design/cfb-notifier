@@ -104,16 +104,11 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
         score += 75
 
     # 5. Scaled Upset Potential Bonus (Quadratic Scaling)
-    # The larger the pre-game spread, the exponentially more points awarded if the underdog keeps it close
     try:
         odds = event["competitions"][0].get("odds", [])
         if odds:
             spread = abs(float(odds[0].get("spread", 0)))
             if diff <= 8:
-                # Quadratic scaling formula: (spread^2) * 2
-                # e.g., 7 pt spread  ->  +98 pts
-                # e.g., 14 pt spread -> +392 pts
-                # e.g., 21 pt spread -> +882 pts
                 upset_bonus = (spread ** 2) * 2.0
                 score += upset_bonus
     except Exception:
@@ -194,8 +189,8 @@ def process_games():
             else:
                 icon = "🏈"
 
-            # Clean line format with Watchability Score
-            game_str = f"{icon} **{period_label} {clock}**  |  **{away_name}** {away_score} @ **{home_name}** {home_score}  *(Diff: {diff})*  `[{watch_score} pts]`"
+            # Two-line format: Game info on line 1, Diff & Watchability on line 2
+            game_str = f"{icon} **{period_label} {clock}**  |  **{away_name}** {away_score} @ **{home_name}** {home_score}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
 
             active_close_games.append({
                 "str": game_str,
@@ -211,7 +206,7 @@ def process_games():
     )
 
     if active_close_games:
-        description_text = "\n".join([g["str"] for g in active_close_games])
+        description_text = "\n\n".join([g["str"] for g in active_close_games])
         footer_text = f"Live updates every 5 mins • {len(active_close_games)} close game(s) active"
         color = 15158332
     else:
