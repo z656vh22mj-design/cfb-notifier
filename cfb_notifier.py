@@ -116,7 +116,7 @@ def process_games():
     # 1. period DESCENDING (-g["period"]) -> Q4 before Q3
     # 2. diff ASCENDING (g["diff"]) -> 0-pt diff before 13-pt diff
     # 3. time DESCENDING (-g["clock_seconds"]) -> 15:00 remaining before 02:00 remaining
-    active_close_games.sort(key=lambda g: (-g["period"], g["diff"], -g["clock_seconds"]))
+    active_close_games.sort(key=lambda g: (-g["period"], g["diff"], g["clock_seconds"]))
 
     if active_close_games:
         description_text = "\n".join([g["str"] for g in active_close_games])
