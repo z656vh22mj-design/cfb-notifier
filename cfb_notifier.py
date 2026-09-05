@@ -31,26 +31,17 @@ def get_live_scoreboard():
         print(f"Error fetching ESPN data: {e}")
         return None
 
-def calculate_time_remaining(period, clock_str):
+def parse_clock_to_seconds(clock_str):
     """
-    Calculates total seconds remaining in regulation (4 quarters x 15 mins = 3600s total).
-    Returns lower values for games closer to ending (OT is treated as 0 seconds left).
+    Converts MM:SS clock string to total seconds remaining in the quarter.
     """
-    if period > 4:
-        return 0  # Overtime games stay at the very top
-
     try:
         parts = clock_str.split(":")
         minutes = int(parts[0])
         seconds = int(parts[1]) if len(parts) > 1 else 0
-        clock_seconds = (minutes * 60) + seconds
+        return (minutes * 60) + seconds
     except Exception:
-        clock_seconds = 0
-
-    # Quarters remaining after the current one (each quarter is 900 seconds)
-    quarters_left = 4 - period
-    total_seconds_left = (quarters_left * 900) + clock_seconds
-    return total_seconds_left
+        return 0
 
 def update_discord_dashboard(message_id, embed_payload):
     if not DISCORD_WEBHOOK_URL:
@@ -107,8 +98,8 @@ def process_games():
 
         if diff <= 17:
             clock = event["status"].get("displayClock", "0:00")
-            period = event["status"].get("period", 1)
-            time_left_sec = calculate_time_remaining(period, clock)
+            period = int(event["status"].get("period", 1))
+            clock_seconds = parse_clock_to_seconds(clock)
 
             period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
 
@@ -116,11 +107,16 @@ def process_games():
             
             active_close_games.append({
                 "str": game_str,
-                "time_left": time_left_sec
+                "period": period,
+                "diff": diff,
+                "clock_seconds": clock_seconds
             })
 
-    # Sort games by least time remaining to most time remaining
-    active_close_games.sort(key=lambda g: g["time_left"])
+    # Sort logic:
+    # 1. period DESCENDING (-g["period"]) -> Q4 before Q3
+    # 2. diff ASCENDING (g["diff"]) -> 0-pt diff before 13-pt diff
+    # 3. time DESCENDING (-g["clock_seconds"]) -> 15:00 remaining before 02:00 remaining
+    active_close_games.sort(key=lambda g: (-g["period"], g["diff"], -g["clock_seconds"]))
 
     if active_close_games:
         description_text = "\n".join([g["str"] for g in active_close_games])
