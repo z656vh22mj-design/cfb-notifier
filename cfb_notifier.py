@@ -32,9 +32,6 @@ def get_live_scoreboard():
         return None
 
 def get_game_win_probability(game_id):
-    """
-    Queries ESPN's game summary endpoint to extract live win percentages.
-    """
     url = f"https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event={game_id}"
     try:
         res = requests.get(url, timeout=5)
@@ -62,10 +59,6 @@ def parse_clock_to_seconds(clock_str):
         return 0
 
 def calculate_watchability_score(event, diff, home_wp, away_wp):
-    """
-    Calculates dynamic watchability score heavily weighing late-game drama,
-    Top 10 upsets, and dousing early-game false alarm upsets.
-    """
     period = int(event["status"].get("period", 1))
     clock_str = event["status"].get("displayClock", "0:00")
     clock_seconds = parse_clock_to_seconds(clock_str)
@@ -85,23 +78,18 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     elif diff <= 17:
         score += 100
 
-    # 3. Live Win Probability Closeness Boost (Max +500 for dead-heat 50/50 games)
+    # 3. Live Win Probability Closeness Boost
     if home_wp is not None:
         wp_margin = abs(home_wp - 0.50)
         wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 1000)
         score += wp_closeness_bonus
 
-    # 4. EXTREME LATE-GAME DRAMA MULTIPLIER (Q4 / OT Close Games)
-    # 4th Quarter 1-possession games scale up massively as time ticks down to 0:00
+    # 4. EXTREME LATE-GAME DRAMA MULTIPLIER
     if period >= 4 and diff <= 8:
-        # Time factor: max 1.0 at 0:00, min ~0.1 at 15:00
         time_elapsed_pct = (900 - min(clock_seconds, 900)) / 900.0
-        late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)  # +2000 to +3500 pts
-        
-        # Additional multiplier if OT
+        late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)
         if period > 4:
             late_game_boost += 1500.0
-            
         score += late_game_boost
 
     # 5. Team Ranks & Upset Potential
@@ -116,7 +104,6 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     elif min_rank <= 25:
         score += 100
 
-    # Upset potential scaling dampener for early quarters (Q1 = 25%, Q2 = 50%, Q3 = 75%, Q4 = 100%)
     quarter_upset_weight = min(1.0, period * 0.25)
 
     # TOP 10 UPSET ALERT
@@ -126,7 +113,7 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
         elif min_rank <= 25 and max_rank > 25:
             score += 400.0 * quarter_upset_weight
 
-    # Point Spread Upset Potential Bonus (Quadratic Scaling dampening in early Qs)
+    # Point Spread Upset Potential
     try:
         odds = event["competitions"][0].get("odds", [])
         if odds:
@@ -141,6 +128,49 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     score += 50
 
     return int(score)
+
+def calculate_playoff_impact(event):
+    """
+    Rates completed games by their impact on 12-team CFP bubble/seeding.
+    """
+    competitors = event["competitions"][0]["competitors"]
+    home = next(c for c in competitors if c["homeAway"] == "home")
+    away = next(c for c in competitors if c["homeAway"] == "away")
+
+    home_rank = int(home.get("curatedRank", {}).get("current", 99))
+    away_rank = int(away.get("curatedRank", {}).get("current", 99))
+    
+    min_rank = min(home_rank, away_rank)
+    
+    impact_score = 0.0
+
+    # 1. High Rank Games (Top 10/25 CFP Contenders)
+    if min_rank <= 10:
+        impact_score += 1000.0
+    elif min_rank <= 25:
+        impact_score += 500.0
+
+    # 2. Massive Upset Impact (Unranked defeats Ranked)
+    home_score = int(home.get("score", 0))
+    away_score = int(away.get("score", 0))
+    
+    if home_score != away_score:
+        winner = home if home_score > home_score else away
+        loser = away if home_score > home_score else home
+        
+        winner_rank = int(winner.get("curatedRank", {}).get("current", 99))
+        loser_rank = int(loser.get("curatedRank", {}).get("current", 99))
+        
+        # Unranked beats Top 25
+        if loser_rank <= 25 and winner_rank > 25:
+            impact_score += 1200.0
+
+    # 3. Game Closeness Premium (Close final scores = higher impact)
+    diff = abs(home_score - away_score)
+    if diff <= 7:
+        impact_score += 300.0
+
+    return impact_score
 
 def update_discord_dashboard(message_id, embed_payload):
     if not DISCORD_WEBHOOK_URL:
@@ -171,16 +201,13 @@ def process_games():
 
     events = data.get("events", [])
     active_close_games = []
+    completed_impact_games = []
 
     for event in events:
         status_state = event["status"]["type"]["state"]
         period = int(event["status"].get("period", 0))
-
-        # Ignore non-active games and pre-game kickoff delays (Q0)
-        if status_state != "in" or period == 0:
-            continue
-
         game_id = str(event["id"])
+
         competition = event["competitions"][0]
         competitors = competition["competitors"]
 
@@ -189,22 +216,30 @@ def process_games():
 
         home_name = home["team"]["abbreviation"]
         away_name = away["team"]["abbreviation"]
+        
+        # Add rank prefix if ranked (e.g. #7 ORE)
+        home_rank = int(home.get("curatedRank", {}).get("current", 99))
+        away_rank = int(away.get("curatedRank", {}).get("current", 99))
+        
+        home_disp = f"#{home_rank} {home_name}" if home_rank <= 25 else home_name
+        away_disp = f"#{away_rank} {away_name}" if away_rank <= 25 else away_name
+
         home_score = int(home.get("score", 0))
         away_score = int(away.get("score", 0))
-
         diff = abs(home_score - away_score)
 
-        if diff <= 17:
+        # -------------------------------------------------------------
+        # 1. PROCESS ACTIVE LIVE GAMES
+        # -------------------------------------------------------------
+        if status_state == "in" and period > 0 and diff <= 17:
             clock = event["status"].get("displayClock", "0:00")
             clock_seconds = parse_clock_to_seconds(clock)
 
-            # Fetch Win Probability for backend watchability sorting
             home_wp, away_wp = get_game_win_probability(game_id)
             watch_score = calculate_watchability_score(event, diff, home_wp, away_wp)
 
             period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
 
-            # Dynamic urgency icon
             if period >= 4 and diff <= 8:
                 icon = "🚨"
             elif period >= 3 and diff <= 8:
@@ -212,8 +247,7 @@ def process_games():
             else:
                 icon = "🏈"
 
-            # Two-line format
-            game_str = f"{icon} **{period_label} {clock}**  |  **{away_name}** {away_score} @ **{home_name}** {home_score}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
+            game_str = f"{icon} **{period_label} {clock}**  |  **{away_disp}** {away_score} @ **{home_disp}** {home_score}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
 
             active_close_games.append({
                 "str": game_str,
@@ -223,27 +257,56 @@ def process_games():
                 "clock_seconds": clock_seconds
             })
 
-    # Sort by Watchability Score DESCENDING
+        # -------------------------------------------------------------
+        # 2. PROCESS COMPLETED PLAYOFF-IMPACT GAMES
+        # -------------------------------------------------------------
+        elif status_state == "post":
+            impact_score = calculate_playoff_impact(event)
+            
+            # Filter out low-level FCS/unranked blowouts from bottom feed
+            if impact_score >= 300:
+                # Bold the winning team
+                if away_score > home_score:
+                    final_str = f"🏁 **FINAL**  |  **{away_disp} {away_score}**, {home_disp} {home_score}"
+                else:
+                    final_str = f"🏁 **FINAL**  |  **{home_disp} {home_score}**, {away_disp} {away_score}"
+
+                completed_impact_games.append({
+                    "str": final_str,
+                    "impact_score": impact_score
+                })
+
+    # Sort Active Games by Watchability Score
     active_close_games.sort(
         key=lambda g: (-g["watch_score"], -g["period"], g["diff"], g["clock_seconds"])
     )
 
+    # Sort Completed Games by Playoff Impact (Top 5 most impactful finals)
+    completed_impact_games.sort(key=lambda g: -g["impact_score"])
+    top_finals = completed_impact_games[:5]
+
+    # Build Discord Embed Content
+    content_sections = []
+
     if active_close_games:
-        description_text = "\n\n".join([g["str"] for g in active_close_games])
-        footer_text = f"Live updates every 5 mins • {len(active_close_games)} close game(s) active"
-        color = 15158332
+        live_text = "\n\n".join([g["str"] for g in active_close_games])
+        content_sections.append(f"### 🔥 LIVE CLOSE GAMES\n{live_text}")
     else:
-        description_text = "*No active FBS games currently within 17 points.*"
-        footer_text = "Live updates every 5 mins • Standby"
-        color = 3447003
+        content_sections.append("### 🔥 LIVE CLOSE GAMES\n*No active FBS games currently within 17 points.*")
+
+    if top_finals:
+        finals_text = "\n".join([g["str"] for g in top_finals])
+        content_sections.append(f"### 🏆 KEY PLAYOFF FINALS\n{finals_text}")
+
+    description_text = "\n\n---\n\n".join(content_sections)
 
     embed_payload = {
         "embeds": [
             {
                 "title": "🏈 ESPN FBS LIVE SCOREBOARD",
                 "description": description_text,
-                "color": color,
-                "footer": {"text": footer_text}
+                "color": 15158332 if active_close_games else 3447003,
+                "footer": {"text": f"Live updates every 5 mins • {len(active_close_games)} active close game(s)"}
             }
         ]
     }
