@@ -33,7 +33,7 @@ def get_live_scoreboard():
 
 def get_game_win_probability(game_id):
     """
-    Queries ESPN's game summary endpoint to extract live win percentages (used internally for sorting).
+    Queries ESPN's game summary endpoint to extract live win percentages (used for backend watchability calculation).
     """
     url = f"https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event={game_id}"
     try:
@@ -62,6 +62,15 @@ def parse_clock_to_seconds(clock_str):
         return 0
 
 def calculate_watchability_score(event, diff, home_wp, away_wp):
+    """
+    Calculates dynamic watchability score based on:
+    - Quarter / Time remaining (late games get higher priority)
+    - Score differential (1-possession games get massive boost)
+    - Win probability closeness (50/50 gives max boost)
+    - Top 10 / Top 25 rankings
+    - Upset potential bonus (based on pre-game betting spread)
+    - Power 4 conference preference
+    """
     period = int(event["status"].get("period", 1))
     competitors = event["competitions"][0]["competitors"]
     home = next(c for c in competitors if c["homeAway"] == "home")
@@ -78,7 +87,7 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     elif diff <= 17:
         score += 100
 
-    # 3. Win Probability Closeness Boost (50/50 dead heat gives maximum bonus)
+    # 3. Live Win Probability Closeness Boost
     if home_wp is not None:
         wp_margin = abs(home_wp - 0.50)
         wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 200)
@@ -94,10 +103,21 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     elif min_rank <= 25:
         score += 75
 
-    # 5. Power 4 Preference
+    # 5. Upset Potential Bonus (Based on Pre-Game Betting Spread)
+    try:
+        odds = event["competitions"][0].get("odds", [])
+        if odds:
+            spread = abs(float(odds[0].get("spread", 0)))
+            # If a heavy underdog (10+ pt spread) keeps it within 1 possession
+            if spread >= 10.0 and diff <= 8:
+                score += int(spread * 10)  # Magnifies big spread upsets into watchability score
+    except Exception:
+        pass
+
+    # 6. Power 4 Preference
     score += 50
 
-    return score
+    return int(score)
 
 def update_discord_dashboard(message_id, embed_payload):
     if not DISCORD_WEBHOOK_URL:
@@ -161,16 +181,16 @@ def process_games():
 
             period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
 
-            # Dynamic urgency icon for visual appeal
+            # Dynamic urgency icon
             if period >= 4 and diff <= 8:
-                icon = "🚨"  # Red alert for 4th quarter 1-possession games
+                icon = "🚨"
             elif period >= 3 and diff <= 8:
-                icon = "🔥"  # High excitement 3rd/4th quarter close game
+                icon = "🔥"
             else:
-                icon = "🏈"  # Standard close game
+                icon = "🏈"
 
-            # Clean single-line layout designed to prevent mobile text wrapping
-            game_str = f"{icon} **{period_label} {clock}**  |  **{away_name}** {away_score} @ **{home_name}** {home_score}  *(Diff: {diff})*"
+            # Clean line format with Watchability Score
+            game_str = f"{icon} **{period_label} {clock}**  |  **{away_name}** {away_score} @ **{home_name}** {home_score}  *(Diff: {diff})*  `[{watch_score} pts]`"
 
             active_close_games.append({
                 "str": game_str,
