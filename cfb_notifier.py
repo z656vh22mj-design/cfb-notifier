@@ -87,23 +87,18 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     away_rank = int(away.get("curatedRank", {}).get("current", 99))
 
     score = 0.0
-
-    # 1. Base Score from Quarter
     score += period * 100
 
-    # 2. Closeness Bonus
     if diff <= 8:
         score += 300
     elif diff <= 17:
         score += 100
 
-    # 3. Live Win Probability Closeness Boost
     if home_wp is not None:
         wp_margin = abs(home_wp - 0.50)
         wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 1000)
         score += wp_closeness_bonus
 
-    # 4. EXTREME LATE-GAME DRAMA MULTIPLIER
     if period >= 4 and diff <= 8:
         time_elapsed_pct = (900 - min(clock_seconds, 900)) / 900.0
         late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)
@@ -111,32 +106,27 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
             late_game_boost += 1500.0
         score += late_game_boost
 
-    # 5. Determine who is leading and if it's an underdog lead
     is_underdog_leading = False
     spread_val = 0.0
 
     try:
         odds = event["competitions"][0].get("odds", [])
         if odds:
-            # ESPN spreads are usually formatted relative to home team (e.g. -14.5 or +14.5)
             spread_val = abs(float(odds[0].get("spread", 0)))
     except Exception:
         pass
 
-    # Check rank underdog lead
     if home_score > away_score and home_rank > away_rank + 10:
         is_underdog_leading = True
     elif away_score > home_score and away_rank > home_rank + 10:
         is_underdog_leading = True
 
-    # Check live win probability underdog lead (favorite has < 40% win prob while losing)
     if home_wp is not None and home_score != away_score:
         if home_score > away_score and home_wp < 0.40:
             is_underdog_leading = True
         elif away_score > home_score and away_wp < 0.40:
             is_underdog_leading = True
 
-    # 6. Apply Underdog Lead & Spread Bonuses
     min_rank = min(home_rank, away_rank)
     if min_rank <= 10:
         score += 300
@@ -144,12 +134,10 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
         score += 100
 
     if diff <= 14 and is_underdog_leading:
-        # Boost early underdog leads significantly (e.g. +600 pts in Q1/Q2)
         underdog_boost = 600.0 + (spread_val * 20.0)
         score += underdog_boost
 
     score += 50
-
     return int(score)
 
 def calculate_playoff_impact(event):
@@ -187,6 +175,41 @@ def calculate_playoff_impact(event):
 
     return impact_score
 
+def calculate_upcoming_game_impact(event):
+    """
+    Calculates potential playoff relevance for scheduled/upcoming games based on team rankings and lines.
+    """
+    competitors = event["competitions"][0]["competitors"]
+    home = next(c for c in competitors if c["homeAway"] == "home")
+    away = next(c for c in competitors if c["homeAway"] == "away")
+
+    home_rank = int(home.get("curatedRank", {}).get("current", 99))
+    away_rank = int(away.get("curatedRank", {}).get("current", 99))
+
+    score = 0.0
+
+    # Matchup significance based on rankings
+    if home_rank <= 12 and away_rank <= 12:
+        score += 2000.0  # Massive Playoff Elimination / Seeding Matchup
+    elif home_rank <= 25 and away_rank <= 25:
+        score += 1200.0  # Ranked vs Ranked
+    elif home_rank <= 12 or away_rank <= 12:
+        score += 800.0   # Top 12 contender facing a potential trap game
+    elif home_rank <= 25 or away_rank <= 25:
+        score += 400.0   # Top 25 team
+
+    # Boost close projected matchups
+    try:
+        odds = event["competitions"][0].get("odds", [])
+        if odds:
+            spread = abs(float(odds[0].get("spread", 0)))
+            if spread <= 7.0:
+                score += 300.0
+    except Exception:
+        pass
+
+    return score
+
 def update_discord_dashboard(message_id, embed_payload):
     if not DISCORD_WEBHOOK_URL:
         print("Missing DISCORD_WEBHOOK_URL secret.")
@@ -217,6 +240,7 @@ def process_games():
     events = data.get("events", [])
     active_close_games = []
     completed_impact_games = []
+    upcoming_impact_games = []
 
     for event in events:
         status_state = event["status"]["type"]["state"]
@@ -245,7 +269,7 @@ def process_games():
         tv_channel = get_broadcast_network(competition)
         tv_str = f" `[{tv_channel}]`" if tv_channel else ""
 
-        # Filter active games: must be live, within 17 pts, and watchability score > 900
+        # 1. LIVE GAMES (Score > 900)
         if status_state == "in" and period > 0 and diff <= 17:
             clock = event["status"].get("displayClock", "0:00")
             clock_seconds = parse_clock_to_seconds(clock)
@@ -253,7 +277,7 @@ def process_games():
             home_wp, away_wp = get_game_win_probability(game_id)
             watch_score = calculate_watchability_score(event, diff, home_wp, away_wp)
 
-            if watch_score > 800:
+            if watch_score > 900:
                 period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
 
                 if period >= 4 and diff <= 8:
@@ -273,6 +297,18 @@ def process_games():
                     "clock_seconds": clock_seconds
                 })
 
+        # 2. UPCOMING GAMES (Pre-game state)
+        elif status_state == "pre":
+            upcoming_score = calculate_upcoming_game_impact(event)
+            if upcoming_score >= 800:
+                start_time_detail = event["status"]["type"].get("shortDetail", "")
+                upcoming_str = f"⏰ **{start_time_detail}**  |  **{away_disp}** @ **{home_disp}**{tv_str}"
+                upcoming_impact_games.append({
+                    "str": upcoming_str,
+                    "score": upcoming_score
+                })
+
+        # 3. COMPLETED GAMES
         elif status_state == "post":
             impact_score = calculate_playoff_impact(event)
             
@@ -291,6 +327,9 @@ def process_games():
         key=lambda g: (-g["watch_score"], -g["period"], g["diff"], g["clock_seconds"])
     )
 
+    upcoming_impact_games.sort(key=lambda g: -g["score"])
+    top_upcoming = upcoming_impact_games[:5]
+
     completed_impact_games.sort(key=lambda g: -g["impact_score"])
     top_finals = completed_impact_games[:15]
 
@@ -301,6 +340,10 @@ def process_games():
         content_sections.append(f"### 🔥 LIVE CLOSE GAMES\n{live_text}")
     else:
         content_sections.append("### 🔥 LIVE CLOSE GAMES\n*No active FBS games currently with watchability over 900 points.*")
+
+    if top_upcoming:
+        upcoming_text = "\n".join([g["str"] for g in top_upcoming])
+        content_sections.append(f"### 📅 BIG UPCOMING GAMES\n{upcoming_text}")
 
     if top_finals:
         finals_text = "\n".join([g["str"] for g in top_finals])
