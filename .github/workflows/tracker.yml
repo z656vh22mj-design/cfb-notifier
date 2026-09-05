@@ -24,6 +24,6 @@ jobs:
 
       - name: Run Score Checker
         env:
-          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
-          PUSHCUT_API_KEY: ${{ secrets.PUSHCUT_API_KEY }}
+          CFBD_API_KEY: ${{ secrets.Bk6miwLpABvIv3wIH9gAmzMTGiG1VC8EMG1wkkPxbH5X+7/ajeEclNCOPH4eOakE }}
+          PUSHCUT_API_KEY: ${{ secrets.KX3pNHRCsvh-iRT5o4Kwe }}
         run: python cfb-notifier.py
