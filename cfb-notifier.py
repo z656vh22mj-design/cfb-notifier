@@ -2,11 +2,10 @@ import os
 import requests
 
 # Retrieve keys securely from GitHub secrets
-CFBD_API_KEY = os.environ.get("Bk6miwLpABvIv3wIH9gAmzMTGiG1VC8EMG1wkkPxbH5X+7/ajeEclNCOPH4eOakE")
-PUSHCUT_API_KEY = os.environ.get("KX3pNHRCsvh-iRT5o4Kwe")
+CFBD_API_KEY = os.environ.get("CFBD_API_KEY")
+PUSHCUT_API_KEY = os.environ.get("PUSHCUT_API_KEY")
 
 def get_live_scoreboard():
-    # Free public endpoint for live scores
     url = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
     try:
         response = requests.get(url, timeout=10)
