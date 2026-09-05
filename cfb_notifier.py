@@ -31,6 +31,20 @@ def get_live_scoreboard():
         print(f"Error fetching ESPN scoreboard: {e}")
         return None
 
+def get_broadcast_network(competition):
+    """
+    Extracts TV network short name (e.g., ABC, FOX, ESPN, CBS) from competition broadcasts.
+    """
+    try:
+        broadcasts = competition.get("broadcasts", [])
+        if broadcasts:
+            names = broadcasts[0].get("names", [])
+            if names:
+                return names[0]
+    except Exception:
+        pass
+    return None
+
 def get_game_win_probability(game_id):
     url = f"https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event={game_id}"
     try:
@@ -130,9 +144,6 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     return int(score)
 
 def calculate_playoff_impact(event):
-    """
-    Rates completed games by their impact on 12-team CFP bubble/seeding.
-    """
     competitors = event["competitions"][0]["competitors"]
     home = next(c for c in competitors if c["homeAway"] == "home")
     away = next(c for c in competitors if c["homeAway"] == "away")
@@ -141,31 +152,26 @@ def calculate_playoff_impact(event):
     away_rank = int(away.get("curatedRank", {}).get("current", 99))
     
     min_rank = min(home_rank, away_rank)
-    
     impact_score = 0.0
 
-    # 1. High Rank Games (Top 10/25 CFP Contenders)
     if min_rank <= 10:
         impact_score += 1000.0
     elif min_rank <= 25:
         impact_score += 500.0
 
-    # 2. Massive Upset Impact (Unranked defeats Ranked)
     home_score = int(home.get("score", 0))
     away_score = int(away.get("score", 0))
     
     if home_score != away_score:
-        winner = home if home_score > home_score else away
-        loser = away if home_score > home_score else home
+        winner = home if home_score > away_score else away
+        loser = away if home_score > away_score else home
         
         winner_rank = int(winner.get("curatedRank", {}).get("current", 99))
         loser_rank = int(loser.get("curatedRank", {}).get("current", 99))
         
-        # Unranked beats Top 25
         if loser_rank <= 25 and winner_rank > 25:
             impact_score += 1200.0
 
-    # 3. Game Closeness Premium (Close final scores = higher impact)
     diff = abs(home_score - away_score)
     if diff <= 7:
         impact_score += 300.0
@@ -217,7 +223,6 @@ def process_games():
         home_name = home["team"]["abbreviation"]
         away_name = away["team"]["abbreviation"]
         
-        # Add rank prefix if ranked (e.g. #7 ORE)
         home_rank = int(home.get("curatedRank", {}).get("current", 99))
         away_rank = int(away.get("curatedRank", {}).get("current", 99))
         
@@ -227,6 +232,9 @@ def process_games():
         home_score = int(home.get("score", 0))
         away_score = int(away.get("score", 0))
         diff = abs(home_score - away_score)
+
+        tv_channel = get_broadcast_network(competition)
+        tv_str = f" `[{tv_channel}]`" if tv_channel else ""
 
         # -------------------------------------------------------------
         # 1. PROCESS ACTIVE LIVE GAMES
@@ -247,7 +255,7 @@ def process_games():
             else:
                 icon = "🏈"
 
-            game_str = f"{icon} **{period_label} {clock}**  |  **{away_disp}** {away_score} @ **{home_disp}** {home_score}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
+            game_str = f"{icon} **{period_label} {clock}**  |  **{away_disp}** {away_score} @ **{home_disp}** {home_score}{tv_str}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
 
             active_close_games.append({
                 "str": game_str,
@@ -263,9 +271,7 @@ def process_games():
         elif status_state == "post":
             impact_score = calculate_playoff_impact(event)
             
-            # Filter out low-level FCS/unranked blowouts from bottom feed
             if impact_score >= 300:
-                # Bold the winning team
                 if away_score > home_score:
                     final_str = f"🏁 **FINAL**  |  **{away_disp} {away_score}**, {home_disp} {home_score}"
                 else:
@@ -276,16 +282,13 @@ def process_games():
                     "impact_score": impact_score
                 })
 
-    # Sort Active Games by Watchability Score
     active_close_games.sort(
         key=lambda g: (-g["watch_score"], -g["period"], g["diff"], g["clock_seconds"])
     )
 
-    # Sort Completed Games by Playoff Impact (Top 5 most impactful finals)
     completed_impact_games.sort(key=lambda g: -g["impact_score"])
     top_finals = completed_impact_games[:5]
 
-    # Build Discord Embed Content
     content_sections = []
 
     if active_close_games:
