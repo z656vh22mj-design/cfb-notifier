@@ -63,9 +63,13 @@ def parse_clock_to_seconds(clock_str):
 
 def calculate_watchability_score(event, diff, home_wp, away_wp):
     """
-    Calculates dynamic watchability score heavily prioritizing Top 10 Upset Alerts.
+    Calculates dynamic watchability score heavily weighing late-game drama,
+    Top 10 upsets, and dousing early-game false alarm upsets.
     """
     period = int(event["status"].get("period", 1))
+    clock_str = event["status"].get("displayClock", "0:00")
+    clock_seconds = parse_clock_to_seconds(clock_str)
+
     competitors = event["competitions"][0]["competitors"]
     home = next(c for c in competitors if c["homeAway"] == "home")
     away = next(c for c in competitors if c["homeAway"] == "away")
@@ -75,19 +79,32 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     # 1. Base Score from Quarter
     score += period * 100
 
-    # 2. Closeness Bonus (1-possession games <= 8 pts get major boost)
+    # 2. Closeness Bonus
     if diff <= 8:
-        score += 250
+        score += 300
     elif diff <= 17:
         score += 100
 
-    # 3. Live Win Probability Closeness Boost
+    # 3. Live Win Probability Closeness Boost (Max +500 for dead-heat 50/50 games)
     if home_wp is not None:
         wp_margin = abs(home_wp - 0.50)
-        wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 200)
+        wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 1000)
         score += wp_closeness_bonus
 
-    # 4. Team Ranks & Heavy Weight on TOP 10 UPSETS
+    # 4. EXTREME LATE-GAME DRAMA MULTIPLIER (Q4 / OT Close Games)
+    # 4th Quarter 1-possession games scale up massively as time ticks down to 0:00
+    if period >= 4 and diff <= 8:
+        # Time factor: max 1.0 at 0:00, min ~0.1 at 15:00
+        time_elapsed_pct = (900 - min(clock_seconds, 900)) / 900.0
+        late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)  # +2000 to +3500 pts
+        
+        # Additional multiplier if OT
+        if period > 4:
+            late_game_boost += 1500.0
+            
+        score += late_game_boost
+
+    # 5. Team Ranks & Upset Potential
     home_rank = int(home.get("curatedRank", {}).get("current", 99))
     away_rank = int(away.get("curatedRank", {}).get("current", 99))
     
@@ -95,26 +112,27 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     max_rank = max(home_rank, away_rank)
 
     if min_rank <= 10:
-        score += 250
+        score += 300
     elif min_rank <= 25:
-        score += 50
+        score += 100
 
-    # DEDICATED TOP 10 UPSET ALERT
-    # If a Top 10 team is tied or trailing an unranked or lower-ranked team within 1 possession
+    # Upset potential scaling dampener for early quarters (Q1 = 25%, Q2 = 50%, Q3 = 75%, Q4 = 100%)
+    quarter_upset_weight = min(1.0, period * 0.25)
+
+    # TOP 10 UPSET ALERT
     if diff <= 8:
-        # Top 10 team vs unranked or team ranked 15+ spots lower
         if min_rank <= 10 and max_rank > 15:
-            score += 2500.0  # Dominates board over standard Top 25 games
+            score += 2000.0 * quarter_upset_weight
         elif min_rank <= 25 and max_rank > 25:
-            score += 500.0   # Standard Top 25 upset boost
+            score += 400.0 * quarter_upset_weight
 
-    # 5. Point Spread Upset Potential Bonus (Quadratic Scaling)
+    # Point Spread Upset Potential Bonus (Quadratic Scaling dampening in early Qs)
     try:
         odds = event["competitions"][0].get("odds", [])
         if odds:
             spread = abs(float(odds[0].get("spread", 0)))
             if diff <= 8:
-                upset_bonus = (spread ** 2) * 2.0
+                upset_bonus = (spread ** 2) * 1.5 * quarter_upset_weight
                 score += upset_bonus
     except Exception:
         pass
@@ -194,7 +212,7 @@ def process_games():
             else:
                 icon = "🏈"
 
-            # Two-line format: Game info on line 1, Diff & Watchability on line 2
+            # Two-line format
             game_str = f"{icon} **{period_label} {clock}**  |  **{away_name}** {away_score} @ **{home_name}** {home_score}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
 
             active_close_games.append({
