@@ -33,7 +33,7 @@ def get_live_scoreboard():
 
 def get_game_win_probability(game_id):
     """
-    Queries ESPN's game summary endpoint to extract live win percentages (used for backend watchability calculation).
+    Queries ESPN's game summary endpoint to extract live win percentages.
     """
     url = f"https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event={game_id}"
     try:
@@ -63,13 +63,7 @@ def parse_clock_to_seconds(clock_str):
 
 def calculate_watchability_score(event, diff, home_wp, away_wp):
     """
-    Calculates dynamic watchability score based on:
-    - Quarter / Time remaining (late games get higher priority)
-    - Score differential (1-possession games get massive boost)
-    - Win probability closeness (50/50 gives max boost)
-    - Top 10 / Top 25 rankings
-    - Scaled Upset Potential (quadratic multiplier based on pre-game spread magnitude)
-    - Power 4 conference preference
+    Calculates dynamic watchability score heavily prioritizing Top 10 Upset Alerts.
     """
     period = int(event["status"].get("period", 1))
     competitors = event["competitions"][0]["competitors"]
@@ -93,17 +87,28 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
         wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 200)
         score += wp_closeness_bonus
 
-    # 4. Top 10 / Top 25 Matchup Bonus
+    # 4. Team Ranks & Heavy Weight on TOP 10 UPSETS
     home_rank = int(home.get("curatedRank", {}).get("current", 99))
     away_rank = int(away.get("curatedRank", {}).get("current", 99))
     
     min_rank = min(home_rank, away_rank)
-    if min_rank <= 10:
-        score += 150
-    elif min_rank <= 25:
-        score += 75
+    max_rank = max(home_rank, away_rank)
 
-    # 5. Scaled Upset Potential Bonus (Quadratic Scaling)
+    if min_rank <= 10:
+        score += 250
+    elif min_rank <= 25:
+        score += 50
+
+    # DEDICATED TOP 10 UPSET ALERT
+    # If a Top 10 team is tied or trailing an unranked or lower-ranked team within 1 possession
+    if diff <= 8:
+        # Top 10 team vs unranked or team ranked 15+ spots lower
+        if min_rank <= 10 and max_rank > 15:
+            score += 2500.0  # Dominates board over standard Top 25 games
+        elif min_rank <= 25 and max_rank > 25:
+            score += 500.0   # Standard Top 25 upset boost
+
+    # 5. Point Spread Upset Potential Bonus (Quadratic Scaling)
     try:
         odds = event["competitions"][0].get("odds", [])
         if odds:
