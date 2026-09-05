@@ -68,7 +68,7 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     - Score differential (1-possession games get massive boost)
     - Win probability closeness (50/50 gives max boost)
     - Top 10 / Top 25 rankings
-    - Upset potential bonus (based on pre-game betting spread)
+    - Scaled Upset Potential (quadratic multiplier based on pre-game spread magnitude)
     - Power 4 conference preference
     """
     period = int(event["status"].get("period", 1))
@@ -103,14 +103,19 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     elif min_rank <= 25:
         score += 75
 
-    # 5. Upset Potential Bonus (Based on Pre-Game Betting Spread)
+    # 5. Scaled Upset Potential Bonus (Quadratic Scaling)
+    # The larger the pre-game spread, the exponentially more points awarded if the underdog keeps it close
     try:
         odds = event["competitions"][0].get("odds", [])
         if odds:
             spread = abs(float(odds[0].get("spread", 0)))
-            # If a heavy underdog (10+ pt spread) keeps it within 1 possession
-            if spread >= 10.0 and diff <= 8:
-                score += int(spread * 10)  # Magnifies big spread upsets into watchability score
+            if diff <= 8:
+                # Quadratic scaling formula: (spread^2) * 2
+                # e.g., 7 pt spread  ->  +98 pts
+                # e.g., 14 pt spread -> +392 pts
+                # e.g., 21 pt spread -> +882 pts
+                upset_bonus = (spread ** 2) * 2.0
+                score += upset_bonus
     except Exception:
         pass
 
