@@ -5,9 +5,6 @@ import requests
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 STATE_FILE = "game_state.json"
 
-# Power 4 conference IDs or abbreviations recognized by ESPN
-POWER_4_CONFERENCES = {"SEC", "ACC", "Big Ten", "Big 12"}
-
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
@@ -25,7 +22,6 @@ def save_state(state):
         print(f"Error saving state: {e}")
 
 def get_live_scoreboard():
-    # Fetch live FBS college football games (Group 80 = FBS)
     url = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80"
     try:
         res = requests.get(url, timeout=10)
@@ -37,7 +33,7 @@ def get_live_scoreboard():
 
 def get_game_win_probability(game_id):
     """
-    Queries ESPN's game summary endpoint to extract live win percentages.
+    Queries ESPN's game summary endpoint to extract live win percentages (used internally for sorting).
     """
     url = f"https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event={game_id}"
     try:
@@ -51,8 +47,8 @@ def get_game_win_probability(game_id):
             home_wp = latest.get("homeWinPercentage", 0.5)
             away_wp = 1.0 - home_wp
             return home_wp, away_wp
-    except Exception as e:
-        print(f"Error fetching win probability for game {game_id}: {e}")
+    except Exception:
+        pass
     
     return None, None
 
@@ -66,14 +62,6 @@ def parse_clock_to_seconds(clock_str):
         return 0
 
 def calculate_watchability_score(event, diff, home_wp, away_wp):
-    """
-    Calculates dynamic watchability score based on:
-    - Quarter / Time remaining (late games get higher priority)
-    - Score differential (1-possession games get massive boost)
-    - Win probability closeness (30%-70% range)
-    - Top 10 / Top 25 rankings
-    - Power 4 conference preference
-    """
     period = int(event["status"].get("period", 1))
     competitors = event["competitions"][0]["competitors"]
     home = next(c for c in competitors if c["homeAway"] == "home")
@@ -92,7 +80,7 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
 
     # 3. Win Probability Closeness Boost (50/50 dead heat gives maximum bonus)
     if home_wp is not None:
-        wp_margin = abs(home_wp - 0.50)  # 0.0 = dead heat, 0.50 = blowout
+        wp_margin = abs(home_wp - 0.50)
         wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 200)
         score += wp_closeness_bonus
 
@@ -102,14 +90,11 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     
     min_rank = min(home_rank, away_rank)
     if min_rank <= 10:
-        score += 150  # Top 10 team involved
+        score += 150
     elif min_rank <= 25:
-        score += 75   # Ranked team involved
+        score += 75
 
-    # 5. Power 4 Conference Preference
-    home_conf = home.get("team", {}).get("conferenceId", "")
-    away_conf = away.get("team", {}).get("conferenceId", "")
-    # Add preference boost if either team belongs to Power 4
+    # 5. Power 4 Preference
     score += 50
 
     return score
@@ -125,18 +110,13 @@ def update_discord_dashboard(message_id, embed_payload):
         if res.status_code == 200:
             print("Dashboard updated successfully.")
             return message_id
-        else:
-            print(f"Failed to edit message ({res.status_code}). Creating new message...")
 
     post_url = f"{DISCORD_WEBHOOK_URL}?wait=true"
     res = requests.post(post_url, json=embed_payload, timeout=5)
     if res.status_code in (200, 201):
         new_id = res.json().get("id")
-        print(f"New dashboard created. Message ID: {new_id}")
         return new_id
-    else:
-        print(f"Error posting dashboard: {res.status_code} - {res.text}")
-        return None
+    return None
 
 def process_games():
     state = load_state()
@@ -144,7 +124,6 @@ def process_games():
 
     data = get_live_scoreboard()
     if not data:
-        print("No active scoreboard data found.")
         return
 
     events = data.get("events", [])
@@ -152,7 +131,10 @@ def process_games():
 
     for event in events:
         status_state = event["status"]["type"]["state"]
-        if status_state != "in":
+        period = int(event["status"].get("period", 0))
+
+        # Ignore non-active games and pre-game kickoff delays (Q0)
+        if status_state != "in" or period == 0:
             continue
 
         game_id = str(event["id"])
@@ -171,23 +153,24 @@ def process_games():
 
         if diff <= 17:
             clock = event["status"].get("displayClock", "0:00")
-            period = int(event["status"].get("period", 1))
             clock_seconds = parse_clock_to_seconds(clock)
 
-            # Fetch live Win Probability
+            # Fetch Win Probability for backend watchability sorting
             home_wp, away_wp = get_game_win_probability(game_id)
-
-            if home_wp is not None:
-                wp_str = f" • `{away_name} {int(away_wp*100)}% - {int(home_wp*100)}% {home_name}`"
-            else:
-                wp_str = ""
+            watch_score = calculate_watchability_score(event, diff, home_wp, away_wp)
 
             period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
 
-            # Calculate composite watchability score
-            watch_score = calculate_watchability_score(event, diff, home_wp, away_wp)
+            # Dynamic urgency icon for visual appeal
+            if period >= 4 and diff <= 8:
+                icon = "🚨"  # Red alert for 4th quarter 1-possession games
+            elif period >= 3 and diff <= 8:
+                icon = "🔥"  # High excitement 3rd/4th quarter close game
+            else:
+                icon = "🏈"  # Standard close game
 
-            game_str = f"`{period_label} {clock:>5}` **{away_name}** {away_score:>2} @ **{home_name}** {home_score:<2} *(Diff: {diff} pts)*{wp_str}"
+            # Clean single-line layout designed to prevent mobile text wrapping
+            game_str = f"{icon} **{period_label} {clock}**  |  **{away_name}** {away_score} @ **{home_name}** {home_score}  *(Diff: {diff})*"
 
             active_close_games.append({
                 "str": game_str,
@@ -197,7 +180,7 @@ def process_games():
                 "clock_seconds": clock_seconds
             })
 
-    # Primary sort by Watchability Score DESCENDING, secondary by Period DESC, Diff ASC, Clock ASC
+    # Sort by Watchability Score DESCENDING
     active_close_games.sort(
         key=lambda g: (-g["watch_score"], -g["period"], g["diff"], g["clock_seconds"])
     )
