@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 STATE_FILE = "game_state.json"
@@ -288,7 +288,7 @@ def process_games():
 
     description_text = "\n\n---\n\n".join(content_sections)
 
-    central_tz = pytz.timezone("America/Chicago")
+    central_tz = ZoneInfo("America/Chicago")
     now_str = datetime.now(central_tz).strftime("%b %d, %Y at %I:%M %p %Z")
 
     embed_payload = {
