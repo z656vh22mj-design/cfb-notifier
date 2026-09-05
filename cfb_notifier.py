@@ -5,7 +5,7 @@ import requests
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 STATE_FILE = "game_state.json"
 
-def load_previous_state():
+def load_state():
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
@@ -14,7 +14,7 @@ def load_previous_state():
             return {}
     return {}
 
-def save_current_state(state):
+def save_state(state):
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(state, f)
@@ -22,97 +22,104 @@ def save_current_state(state):
         print(f"Error saving state: {e}")
 
 def get_live_scoreboard():
-    # Fetch live FBS college football games from ESPN
     url = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80"
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.json()
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
+        return res.json()
     except Exception as e:
-        print(f"Error fetching scoreboard: {e}")
+        print(f"Error fetching ESPN data: {e}")
         return None
 
-def send_discord_alert(title, text):
+def update_discord_dashboard(message_id, embed_payload):
     if not DISCORD_WEBHOOK_URL:
-        print("Missing DISCORD_WEBHOOK_URL secret.")
-        return
+        print("Missing DISCORD_WEBHOOK_URL.")
+        return None
 
-    payload = {
-        "embeds": [
-            {
-                "title": title,
-                "description": text,
-                "color": 3447003  # Blue embed color
-            }
-        ]
-    }
-    try:
-        res = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=5)
-        res.raise_for_status()
-        print(f"ALERT SENT: {title}")
-    except Exception as e:
-        print(f"Error sending Discord alert: {e}")
+    # If message_id exists, edit the message; otherwise, create a new one
+    if message_id:
+        edit_url = f"{DISCORD_WEBHOOK_URL}/messages/{message_id}"
+        res = requests.patch(edit_url, json=embed_payload, timeout=5)
+        if res.status_code == 200:
+            print("Dashboard updated successfully.")
+            return message_id
+        else:
+            print(f"Failed to edit message (Status {res.status_code}). Creating new message...")
+
+    # Post new message if editing failed or no message_id exists
+    post_url = f"{DISCORD_WEBHOOK_URL}?wait=true"
+    res = requests.post(post_url, json=embed_payload, timeout=5)
+    if res.status_code in (200, 201):
+        new_id = res.json().get("id")
+        print(f"New dashboard created. Message ID: {new_id}")
+        return new_id
+    else:
+        print(f"Error posting dashboard: {res.status_code} - {res.text}")
+        return None
 
 def process_games():
+    state = load_state()
+    message_id = state.get("dashboard_message_id")
+
     data = get_live_scoreboard()
     if not data:
-        print("No active scoreboard data found.")
         return
 
-    previous_state = load_previous_state()
-    current_state = {}
-
     events = data.get("events", [])
-    
+    active_close_games = []
+
     for event in events:
-        status = event["status"]["type"]["state"]
-        if status != "in":
+        status_state = event["status"]["type"]["state"]
+        if status_state != "in":
             continue
 
-        game_id = str(event["id"])
         competition = event["competitions"][0]
         competitors = competition["competitors"]
 
         home = next(c for c in competitors if c["homeAway"] == "home")
         away = next(c for c in competitors if c["homeAway"] == "away")
 
-        home_name = home["team"]["displayName"]
-        away_name = away["team"]["displayName"]
+        home_name = home["team"]["abbreviation"]
+        away_name = away["team"]["abbreviation"]
         home_score = int(home.get("score", 0))
         away_score = int(away.get("score", 0))
 
-        # Record current state for next run
-        current_state[game_id] = {
-            "home_score": home_score,
-            "away_score": away_score
-        }
-
         diff = abs(home_score - away_score)
 
-        # Detect score changes between runs
-        if game_id in previous_state:
-            prev_home = previous_state[game_id]["home_score"]
-            prev_away = previous_state[game_id]["away_score"]
-            score_changed = (home_score != prev_home) or (away_score != prev_away)
-        else:
-            # First time detecting this active game
-            score_changed = True
-
-        # Condition: Trigger if a score changed AND point difference is 17 or less
-        if score_changed and diff <= 17:
+        if diff <= 17:
             clock = event["status"].get("displayClock", "0:00")
             period = event["status"].get("period", 1)
+            
+            # Format game line like an ESPN Scoreboard widget
+            game_str = f"`Q{period} {clock:>5}`  **{away_name}** {away_score:>2} @ **{home_name}** {home_score:<2}  *(Diff: {diff} pts)*"
+            active_close_games.append(game_str)
 
-            alert_title = f"🏈 Score Update ({diff}-pt game)"
-            alert_body = (
-                f"**{away_name}** {away_score} @ **{home_name}** {home_score}\n"
-                f"*Quarter {period} - {clock}*\n"
-                f"Differential: **{diff} points** ($\le 17$)"
-            )
+    # Build ESPN-style embed
+    if active_close_games:
+        description_text = "\n".join(active_close_games)
+        footer_text = f"Live updates every 5 mins • {len(active_close_games)} close game(s) active"
+        color = 15158332 # Red/Orange live indicator
+    else:
+        description_text = "*No active FBS games currently within 17 points.*"
+        footer_text = "Live updates every 5 mins • Standby"
+        color = 3447003 # Blue standard indicator
 
-            send_discord_alert(alert_title, alert_body)
+    embed_payload = {
+        "embeds": [
+            {
+                "title": "🏈 ESPN FBS LIVE SCOREBOARD",
+                "description": description_text,
+                "color": color,
+                "footer": {"text": footer_text}
+            }
+        ]
+    }
 
-    save_current_state(current_state)
+    # Edit existing message or post a new one
+    new_message_id = update_discord_dashboard(message_id, embed_payload)
+    if new_message_id:
+        state["dashboard_message_id"] = new_message_id
+        save_state(state)
 
 if __name__ == "__main__":
     process_games()
