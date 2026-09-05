@@ -80,20 +80,30 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     home = next(c for c in competitors if c["homeAway"] == "home")
     away = next(c for c in competitors if c["homeAway"] == "away")
 
+    home_score = int(home.get("score", 0))
+    away_score = int(away.get("score", 0))
+
+    home_rank = int(home.get("curatedRank", {}).get("current", 99))
+    away_rank = int(away.get("curatedRank", {}).get("current", 99))
+
     score = 0.0
 
+    # 1. Base Score from Quarter
     score += period * 100
 
+    # 2. Closeness Bonus
     if diff <= 8:
         score += 300
     elif diff <= 17:
         score += 100
 
+    # 3. Live Win Probability Closeness Boost
     if home_wp is not None:
         wp_margin = abs(home_wp - 0.50)
         wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 1000)
         score += wp_closeness_bonus
 
+    # 4. EXTREME LATE-GAME DRAMA MULTIPLIER
     if period >= 4 and diff <= 8:
         time_elapsed_pct = (900 - min(clock_seconds, 900)) / 900.0
         late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)
@@ -101,34 +111,42 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
             late_game_boost += 1500.0
         score += late_game_boost
 
-    home_rank = int(home.get("curatedRank", {}).get("current", 99))
-    away_rank = int(away.get("curatedRank", {}).get("current", 99))
-    
-    min_rank = min(home_rank, away_rank)
-    max_rank = max(home_rank, away_rank)
+    # 5. Determine who is leading and if it's an underdog lead
+    is_underdog_leading = False
+    spread_val = 0.0
 
+    try:
+        odds = event["competitions"][0].get("odds", [])
+        if odds:
+            # ESPN spreads are usually formatted relative to home team (e.g. -14.5 or +14.5)
+            spread_val = abs(float(odds[0].get("spread", 0)))
+    except Exception:
+        pass
+
+    # Check rank underdog lead
+    if home_score > away_score and home_rank > away_rank + 10:
+        is_underdog_leading = True
+    elif away_score > home_score and away_rank > home_rank + 10:
+        is_underdog_leading = True
+
+    # Check live win probability underdog lead (favorite has < 40% win prob while losing)
+    if home_wp is not None and home_score != away_score:
+        if home_score > away_score and home_wp < 0.40:
+            is_underdog_leading = True
+        elif away_score > home_score and away_wp < 0.40:
+            is_underdog_leading = True
+
+    # 6. Apply Underdog Lead & Spread Bonuses
+    min_rank = min(home_rank, away_rank)
     if min_rank <= 10:
         score += 300
     elif min_rank <= 25:
         score += 100
 
-    quarter_upset_weight = min(1.0, period * 0.25)
-
-    if diff <= 8:
-        if min_rank <= 10 and max_rank > 15:
-            score += 2000.0 * quarter_upset_weight
-        elif min_rank <= 25 and max_rank > 25:
-            score += 400.0 * quarter_upset_weight
-
-    try:
-        odds = event["competitions"][0].get("odds", [])
-        if odds:
-            spread = abs(float(odds[0].get("spread", 0)))
-            if diff <= 8:
-                upset_bonus = (spread ** 2) * 1.5 * quarter_upset_weight
-                score += upset_bonus
-    except Exception:
-        pass
+    if diff <= 14 and is_underdog_leading:
+        # Boost early underdog leads significantly (e.g. +600 pts in Q1/Q2)
+        underdog_boost = 600.0 + (spread_val * 20.0)
+        score += underdog_boost
 
     score += 50
 
