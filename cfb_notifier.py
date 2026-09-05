@@ -31,12 +31,32 @@ def get_live_scoreboard():
         print(f"Error fetching ESPN data: {e}")
         return None
 
+def calculate_time_remaining(period, clock_str):
+    """
+    Calculates total seconds remaining in regulation (4 quarters x 15 mins = 3600s total).
+    Returns lower values for games closer to ending (OT is treated as 0 seconds left).
+    """
+    if period > 4:
+        return 0  # Overtime games stay at the very top
+
+    try:
+        parts = clock_str.split(":")
+        minutes = int(parts[0])
+        seconds = int(parts[1]) if len(parts) > 1 else 0
+        clock_seconds = (minutes * 60) + seconds
+    except Exception:
+        clock_seconds = 0
+
+    # Quarters remaining after the current one (each quarter is 900 seconds)
+    quarters_left = 4 - period
+    total_seconds_left = (quarters_left * 900) + clock_seconds
+    return total_seconds_left
+
 def update_discord_dashboard(message_id, embed_payload):
     if not DISCORD_WEBHOOK_URL:
         print("Missing DISCORD_WEBHOOK_URL.")
         return None
 
-    # If message_id exists, edit the message; otherwise, create a new one
     if message_id:
         edit_url = f"{DISCORD_WEBHOOK_URL}/messages/{message_id}"
         res = requests.patch(edit_url, json=embed_payload, timeout=5)
@@ -46,7 +66,6 @@ def update_discord_dashboard(message_id, embed_payload):
         else:
             print(f"Failed to edit message (Status {res.status_code}). Creating new message...")
 
-    # Post new message if editing failed or no message_id exists
     post_url = f"{DISCORD_WEBHOOK_URL}?wait=true"
     res = requests.post(post_url, json=embed_payload, timeout=5)
     if res.status_code in (200, 201):
@@ -89,20 +108,28 @@ def process_games():
         if diff <= 17:
             clock = event["status"].get("displayClock", "0:00")
             period = event["status"].get("period", 1)
-            
-            # Format game line like an ESPN Scoreboard widget
-            game_str = f"`Q{period} {clock:>5}`  **{away_name}** {away_score:>2} @ **{home_name}** {home_score:<2}  *(Diff: {diff} pts)*"
-            active_close_games.append(game_str)
+            time_left_sec = calculate_time_remaining(period, clock)
 
-    # Build ESPN-style embed
+            period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
+
+            game_str = f"`{period_label} {clock:>5}`  **{away_name}** {away_score:>2} @ **{home_name}** {home_score:<2}  *(Diff: {diff} pts)*"
+            
+            active_close_games.append({
+                "str": game_str,
+                "time_left": time_left_sec
+            })
+
+    # Sort games by least time remaining to most time remaining
+    active_close_games.sort(key=lambda g: g["time_left"])
+
     if active_close_games:
-        description_text = "\n".join(active_close_games)
+        description_text = "\n".join([g["str"] for g in active_close_games])
         footer_text = f"Live updates every 5 mins • {len(active_close_games)} close game(s) active"
-        color = 15158332 # Red/Orange live indicator
+        color = 15158332
     else:
         description_text = "*No active FBS games currently within 17 points.*"
         footer_text = "Live updates every 5 mins • Standby"
-        color = 3447003 # Blue standard indicator
+        color = 3447003
 
     embed_payload = {
         "embeds": [
@@ -115,7 +142,6 @@ def process_games():
         ]
     }
 
-    # Edit existing message or post a new one
     new_message_id = update_discord_dashboard(message_id, embed_payload)
     if new_message_id:
         state["dashboard_message_id"] = new_message_id
