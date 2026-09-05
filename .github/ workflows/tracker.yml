@@ -21,9 +21,9 @@ jobs:
 
       - name: Install Dependencies
         run: pip install requests
-
+m
       - name: Run Score Checker
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
           PUSHCUT_API_KEY: ${{ secrets.PUSHCUT_API_KEY }}
-        run: python cfb_notifier.py
+        run: python cfb-notifier.py
