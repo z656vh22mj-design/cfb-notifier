@@ -38,8 +38,7 @@ def send_pushcut_alert(title, text):
     url = f"https://api.pushcut.io/{PUSHCUT_API_KEY}/notifications/CFB%20Alert"
     payload = {
         "title": title,
-        "text": text,
-        "isTimeSensitive": True
+        "text": text
     }
     try:
         res = requests.post(url, json=payload, timeout=5)
