@@ -17,6 +17,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.AUTO_PUSH_TOKEN }}
           persist-credentials: true
 
       - name: Restore Game State Cache
