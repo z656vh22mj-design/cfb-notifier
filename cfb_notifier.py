@@ -87,18 +87,23 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     away_rank = int(away.get("curatedRank", {}).get("current", 99))
 
     score = 0.0
+
+    # 1. Base Score from Quarter
     score += period * 100
 
+    # 2. Closeness Bonus
     if diff <= 8:
         score += 300
     elif diff <= 17:
         score += 100
 
+    # 3. Live Win Probability Closeness Boost
     if home_wp is not None:
         wp_margin = abs(home_wp - 0.50)
         wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 1000)
         score += wp_closeness_bonus
 
+    # 4. Late-Game Drama Boost
     if period >= 4 and diff <= 8:
         time_elapsed_pct = (900 - min(clock_seconds, 900)) / 900.0
         late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)
@@ -106,6 +111,7 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
             late_game_boost += 1500.0
         score += late_game_boost
 
+    # 5. Determine Underdog Status
     is_underdog_leading = False
     spread_val = 0.0
 
@@ -133,9 +139,14 @@ def calculate_watchability_score(event, diff, home_wp, away_wp):
     elif min_rank <= 25:
         score += 100
 
+    # 6. Underdog Bonuses
     if diff <= 14 and is_underdog_leading:
         underdog_boost = 600.0 + (spread_val * 20.0)
         score += underdog_boost
+
+    # 7. Blowout Upset Bonus (Underdog leading a ranked team by 18+ points)
+    if diff >= 18 and is_underdog_leading and min_rank <= 25:
+        score += 500.0
 
     score += 50
     return int(score)
@@ -176,9 +187,6 @@ def calculate_playoff_impact(event):
     return impact_score
 
 def calculate_upcoming_game_impact(event):
-    """
-    Calculates potential playoff relevance for scheduled/upcoming games based on team rankings and lines.
-    """
     competitors = event["competitions"][0]["competitors"]
     home = next(c for c in competitors if c["homeAway"] == "home")
     away = next(c for c in competitors if c["homeAway"] == "away")
@@ -188,17 +196,15 @@ def calculate_upcoming_game_impact(event):
 
     score = 0.0
 
-    # Matchup significance based on rankings
     if home_rank <= 12 and away_rank <= 12:
-        score += 2000.0  # Massive Playoff Elimination / Seeding Matchup
+        score += 2000.0
     elif home_rank <= 25 and away_rank <= 25:
-        score += 1200.0  # Ranked vs Ranked
+        score += 1200.0
     elif home_rank <= 12 or away_rank <= 12:
-        score += 800.0   # Top 12 contender facing a potential trap game
+        score += 800.0
     elif home_rank <= 25 or away_rank <= 25:
-        score += 400.0   # Top 25 team
+        score += 400.0
 
-    # Boost close projected matchups
     try:
         odds = event["competitions"][0].get("odds", [])
         if odds:
@@ -269,8 +275,8 @@ def process_games():
         tv_channel = get_broadcast_network(competition)
         tv_str = f" `[{tv_channel}]`" if tv_channel else ""
 
-        # 1. LIVE GAMES (Score > 900)
-        if status_state == "in" and period > 0 and diff <= 17:
+        # 1. LIVE GAMES
+        if status_state == "in" and period > 0:
             clock = event["status"].get("displayClock", "0:00")
             clock_seconds = parse_clock_to_seconds(clock)
 
@@ -282,6 +288,8 @@ def process_games():
 
                 if period >= 4 and diff <= 8:
                     icon = "🚨"
+                elif diff >= 18:
+                    icon = "⚠️"  # Upset Alert Icon for Blowouts
                 elif period >= 3 and diff <= 8:
                     icon = "🔥"
                 else:
@@ -297,7 +305,7 @@ def process_games():
                     "clock_seconds": clock_seconds
                 })
 
-        # 2. UPCOMING GAMES (Pre-game state)
+        # 2. UPCOMING GAMES
         elif status_state == "pre":
             upcoming_score = calculate_upcoming_game_impact(event)
             if upcoming_score >= 800:
@@ -337,9 +345,9 @@ def process_games():
 
     if active_close_games:
         live_text = "\n\n".join([g["str"] for g in active_close_games])
-        content_sections.append(f"### 🔥 LIVE CLOSE GAMES\n{live_text}")
+        content_sections.append(f"### 🔥 LIVE GAMES\n{live_text}")
     else:
-        content_sections.append("### 🔥 LIVE CLOSE GAMES\n*No active FBS games currently with watchability over 900 points.*")
+        content_sections.append("### 🔥 LIVE GAMES\n*No active FBS games currently with watchability over 900 points.*")
 
     if top_upcoming:
         upcoming_text = "\n".join([g["str"] for g in top_upcoming])
@@ -361,7 +369,7 @@ def process_games():
                 "description": description_text,
                 "color": 15158332 if active_close_games else 3447003,
                 "footer": {
-                    "text": f"Live updates every 5 mins • {len(active_close_games)} active close game(s) • Last updated: {now_str}"
+                    "text": f"Live updates every 5 mins • {len(active_close_games)} active tracked game(s) • Last updated: {now_str}"
                 }
             }
         ]
