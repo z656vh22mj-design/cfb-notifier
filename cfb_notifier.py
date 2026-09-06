@@ -1,406 +1,165 @@
 import os
-import json
 import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+# Configuration & Settings
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
-STATE_FILE = "game_state.json"
+CENTRAL_TZ = ZoneInfo("America/Chicago")
+ESPN_API_URL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
 
-def load_state():
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+def get_cst_now():
+    """Returns formatted string of current time in Central Time."""
+    return datetime.now(CENTRAL_TZ).strftime("%m/%d %I:%M %p CST")
 
-def save_state(state):
+def parse_utc_to_cst(utc_date_str):
+    """Converts ESPN's UTC ISO date string into Central Time format."""
     try:
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f)
-    except Exception as e:
-        print(f"Error saving state: {e}")
-
-def get_live_scoreboard():
-    url = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80"
-    try:
-        res = requests.get(url, timeout=10)
-        res.raise_for_status()
-        return res.json()
-    except Exception as e:
-        print(f"Error fetching ESPN scoreboard: {e}")
-        return None
-
-def get_broadcast_network(competition):
-    try:
-        broadcasts = competition.get("broadcasts", [])
-        if broadcasts:
-            names = broadcasts[0].get("names", [])
-            if names:
-                return names[0]
+        utc_dt = datetime.fromisoformat(utc_date_str.replace("Z", "+00:00"))
+        cst_dt = utc_dt.astimezone(CENTRAL_TZ)
+        return cst_dt.strftime("%-m/%-d - %-I:%M %p CST")
     except Exception:
-        pass
-    return None
+        return utc_date_str
 
-def get_game_win_probability(game_id):
-    url = f"https://site.api.espn.com/apis/site/v2/sports/football/college-football/summary?event={game_id}"
-    try:
-        res = requests.get(url, timeout=5)
-        res.raise_for_status()
-        data = res.json()
-        
-        win_prob_list = data.get("winprobability", [])
-        if win_prob_list:
-            latest = win_prob_list[-1]
-            home_wp = latest.get("homeWinPercentage", 0.5)
-            away_wp = 1.0 - home_wp
-            return home_wp, away_wp
-    except Exception:
-        pass
+def calculate_watchability(game):
+    """Calculates a watchability score based on rankings, clock, and score differential."""
+    status = game["status"]["type"]["state"]
+    competition = game["competitions"][0]
     
-    return None, None
-
-def parse_clock_to_seconds(clock_str):
-    try:
-        parts = clock_str.split(":")
-        minutes = int(parts[0])
-        seconds = int(parts[1]) if len(parts) > 1 else 0
-        return (minutes * 60) + seconds
-    except Exception:
+    # Only score live or scheduled games
+    if status == "post":
         return 0
 
-def calculate_watchability_score(event, diff, home_wp, away_wp):
-    period = int(event["status"].get("period", 1))
-    clock_str = event["status"].get("displayClock", "0:00")
-    clock_seconds = parse_clock_to_seconds(clock_str)
-
-    competitors = event["competitions"][0]["competitors"]
-    home = next(c for c in competitors if c["homeAway"] == "home")
-    away = next(c for c in competitors if c["homeAway"] == "away")
+    home = competition["competitors"][0]
+    away = competition["competitors"][1]
 
     home_score = int(home.get("score", 0))
     away_score = int(away.get("score", 0))
-
-    home_rank = int(home.get("curatedRank", {}).get("current", 99))
-    away_rank = int(away.get("curatedRank", {}).get("current", 99))
-
-    score = 0.0
-
-    # 1. Base Score from Quarter
-    score += period * 100
-
-    # 2. Closeness Bonus
-    if diff <= 8:
-        score += 300
-    elif diff <= 17:
-        score += 100
-
-    # 3. Live Win Probability Closeness Boost
-    if home_wp is not None:
-        wp_margin = abs(home_wp - 0.50)
-        wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 1000)
-        score += wp_closeness_bonus
-
-    # 4. Late-Game Drama Boost
-    if period >= 4 and diff <= 8:
-        time_elapsed_pct = (900 - min(clock_seconds, 900)) / 900.0
-        late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)
-        if period > 4:
-            late_game_boost += 1500.0
-        score += late_game_boost
-
-    # 5. Determine Underdog Status
-    is_underdog_leading = False
-    spread_val = 0.0
-
-    try:
-        odds = event["competitions"][0].get("odds", [])
-        if odds:
-            spread_val = abs(float(odds[0].get("spread", 0)))
-    except Exception:
-        pass
-
-    if home_score > away_score and home_rank > away_rank + 10:
-        is_underdog_leading = True
-    elif away_score > home_score and away_rank > home_rank + 10:
-        is_underdog_leading = True
-
-    if home_wp is not None and home_score != away_score:
-        if home_score > away_score and home_wp < 0.40:
-            is_underdog_leading = True
-        elif away_score > home_score and away_wp < 0.40:
-            is_underdog_leading = True
-
-    min_rank = min(home_rank, away_rank)
-    if min_rank <= 10:
-        score += 300
-    elif min_rank <= 25:
-        score += 100
-
-    # 6. Underdog Bonuses
-    if diff <= 14 and is_underdog_leading:
-        underdog_boost = 600.0 + (spread_val * 20.0)
-        score += underdog_boost
-
-    # 7. Blowout Upset Bonus (Underdog leading a ranked team by 18+ points)
-    if diff >= 18 and is_underdog_leading and min_rank <= 25:
-        score += 500.0
-
-    score += 50
-    return int(score)
-
-def calculate_playoff_impact(event):
-    competitors = event["competitions"][0]["competitors"]
-    home = next(c for c in competitors if c["homeAway"] == "home")
-    away = next(c for c in competitors if c["homeAway"] == "away")
-
-    home_rank = int(home.get("curatedRank", {}).get("current", 99))
-    away_rank = int(away.get("curatedRank", {}).get("current", 99))
-    
-    min_rank = min(home_rank, away_rank)
-    impact_score = 0.0
-
-    if min_rank <= 10:
-        impact_score += 1000.0
-    elif min_rank <= 25:
-        impact_score += 500.0
-
-    home_score = int(home.get("score", 0))
-    away_score = int(away.get("score", 0))
-    
-    if home_score != away_score:
-        winner = home if home_score > away_score else away
-        loser = away if home_score > away_score else home
-        
-        winner_rank = int(winner.get("curatedRank", {}).get("current", 99))
-        loser_rank = int(loser.get("curatedRank", {}).get("current", 99))
-        
-        if loser_rank <= 25 and winner_rank > 25:
-            impact_score += 1200.0
-
     diff = abs(home_score - away_score)
-    if diff <= 7:
-        impact_score += 300.0
 
-    return impact_score
+    home_rank = home.get("curatedRank", {}).get("current", 99)
+    away_rank = away.get("curatedRank", {}).get("current", 99)
 
-def calculate_upcoming_game_impact(event):
-    competitors = event["competitions"][0]["competitors"]
-    home = next(c for c in competitors if c["homeAway"] == "home")
-    away = next(c for c in competitors if c["homeAway"] == "away")
+    # Base value for ranked matchups
+    score = 0
+    if home_rank <= 25:
+        score += (26 - home_rank) * 15
+    if away_rank <= 25:
+        score += (26 - away_rank) * 15
 
-    home_rank = int(home.get("curatedRank", {}).get("current", 99))
-    away_rank = int(away.get("curatedRank", {}).get("current", 99))
+    # Live game multipliers based on tight score differentials
+    if status == "in":
+        period = game["status"].get("period", 1)
+        score += 300  # Live game base bonus
+        
+        if diff <= 7:
+            score += 400
+        elif diff <= 14:
+            score += 200
 
-    score = 0.0
-
-    if home_rank <= 12 and away_rank <= 12:
-        score += 2000.0
-    elif home_rank <= 25 and away_rank <= 25:
-        score += 1200.0
-    elif home_rank <= 12 or away_rank <= 12:
-        score += 800.0
-    elif home_rank <= 25 or away_rank <= 25:
-        score += 400.0
-
-    try:
-        odds = event["competitions"][0].get("odds", [])
-        if odds:
-            spread = abs(float(odds[0].get("spread", 0)))
-            if spread <= 7.0:
-                score += 300.0
-    except Exception:
-        pass
+        if period >= 3 and diff <= 8:
+            score += 300
+        if period == 4 and diff <= 7:
+            score += 500
 
     return score
 
-def update_discord_dashboard(message_id, embed_payload):
-    if not DISCORD_WEBHOOK_URL:
-        print("Missing DISCORD_WEBHOOK_URL secret.")
-        return None
+def format_game_string(game):
+    """Formats individual game details cleanly for Discord display."""
+    status = game["status"]["type"]["state"]
+    detail = game["status"]["type"]["shortDetail"]
+    competition = game["competitions"][0]
 
-    if message_id:
-        edit_url = f"{DISCORD_WEBHOOK_URL}/messages/{message_id}"
-        res = requests.patch(edit_url, json=embed_payload, timeout=5)
-        if res.status_code == 200:
-            print("Dashboard updated successfully.")
-            return message_id
+    home = competition["competitors"][0]
+    away = competition["competitors"][1]
 
-    post_url = f"{DISCORD_WEBHOOK_URL}?wait=true"
-    res = requests.post(post_url, json=embed_payload, timeout=5)
-    if res.status_code in (200, 201):
-        new_id = res.json().get("id")
-        return new_id
-    return None
+    home_name = home["team"]["abbreviation"]
+    away_name = away["team"]["abbreviation"]
 
-def export_scores_json(active_close_games, now_str):
-    """Saves top live games to a lightweight JSON file for the iPhone widget."""
-    output_data = {
-        "updated_at": now_str,
-        "active_games": [
-            {
-                "str": g["str"],
-                "watch_score": g["watch_score"]
-            }
-            for g in active_close_games[:3]  # Keep top 3 games
-        ]
-    }
-    try:
-        with open("scores.json", "w") as f:
-            json.dump(output_data, f, indent=2)
-        print("Exported scores.json successfully.")
-    except Exception as e:
-        print(f"Error exporting scores.json: {e}")
+    home_rank = f"#{home['curatedRank']['current']} " if home.get("curatedRank", {}).get("current", 99) <= 25 else ""
+    away_rank = f"#{away['curatedRank']['current']} " if away.get("curatedRank", {}).get("current", 99) <= 25 else ""
 
-def process_games():
-    state = load_state()
-    message_id = state.get("dashboard_message_id")
+    broadcast = ""
+    if competition.get("broadcasts") and competition["broadcasts"][0].get("names"):
+        broadcast = f" [{competition['broadcasts'][0]['names'][0]}]"
 
-    data = get_live_scoreboard()
-    if not data:
+    if status == "in":
+        home_score = home.get("score", "0")
+        away_score = away.get("score", "0")
+        diff = abs(int(home_score) - int(away_score))
+        watch_score = calculate_watchability(game)
+
+        return (
+            f"🏈 `{detail}` | {away_rank}{away_name} {away_score} @ {home_rank}{home_name} {home_score}{broadcast}\n"
+            f"└ *(Diff: {diff} pts)* [{watch_score} pts]"
+        )
+
+    elif status == "pre":
+        start_cst = parse_utc_to_cst(game["date"])
+        return f"⏰ `{start_cst}` | {away_rank}{away_name} @ {home_rank}{home_name}{broadcast}"
+
+    elif status == "post":
+        home_score = home.get("score", "0")
+        away_score = away.get("score", "0")
+        return f"🏁 `FINAL` | {away_rank}{away_name} {away_score}, {home_rank}{home_name} {home_score}"
+
+    return ""
+
+def fetch_and_notify():
+    response = requests.get(ESPN_API_URL)
+    if response.status_code != 200:
+        print(f"Failed to fetch ESPN data: {response.status_code}")
         return
 
+    data = response.json()
     events = data.get("events", [])
-    active_close_games = []
-    completed_impact_games = []
-    upcoming_impact_games = []
+
+    live_games = []
+    upcoming_games = []
+    final_games = []
 
     for event in events:
-        status_state = event["status"]["type"]["state"]
-        period = int(event["status"].get("period", 0))
-        game_id = str(event["id"])
+        state = event["status"]["type"]["state"]
+        formatted_str = format_game_string(event)
 
-        competition = event["competitions"][0]
-        competitors = competition["competitors"]
+        if state == "in":
+            watch_score = calculate_watchability(event)
+            if watch_score >= 800:  # Priority threshold for high watchability
+                live_games.append(formatted_str)
+        elif state == "pre":
+            home_rank = event["competitions"][0]["competitors"][0].get("curatedRank", {}).get("current", 99)
+            away_rank = event["competitions"][0]["competitors"][1].get("curatedRank", {}).get("current", 99)
+            if home_rank <= 25 or away_rank <= 25:  # Featured upcoming ranked games
+                upcoming_games.append(formatted_str)
+        elif state == "post":
+            home_rank = event["competitions"][0]["competitors"][0].get("curatedRank", {}).get("current", 99)
+            away_rank = event["competitions"][0]["competitors"][1].get("curatedRank", {}).get("current", 99)
+            if home_rank <= 25 or away_rank <= 25:
+                final_games.append(formatted_str)
 
-        home = next(c for c in competitors if c["homeAway"] == "home")
-        away = next(c for c in competitors if c["homeAway"] == "away")
+    # Build Discord Markdown Output
+    lines = ["### 🔥 LIVE GAMES"]
+    lines.extend(live_games if live_games else ["No close live games above score threshold."])
 
-        home_name = home["team"]["abbreviation"]
-        away_name = away["team"]["abbreviation"]
-        
-        home_rank = int(home.get("curatedRank", {}).get("current", 99))
-        away_rank = int(away.get("curatedRank", {}).get("current", 99))
-        
-        home_disp = f"#{home_rank} {home_name}" if home_rank <= 25 else home_name
-        away_disp = f"#{away_rank} {away_name}" if away_rank <= 25 else away_name
+    lines.append("\n---")
+    lines.append("### 📆 BIG UPCOMING GAMES")
+    lines.extend(upcoming_games[:3] if upcoming_games else ["No upcoming ranked matchups today."])
 
-        home_score = int(home.get("score", 0))
-        away_score = int(away.get("score", 0))
-        diff = abs(home_score - away_score)
+    lines.append("\n---")
+    lines.append("### 🏆 KEY PLAYOFF FINALS")
+    lines.extend(final_games[:10] if final_games else ["No completed key matchups."])
 
-        tv_channel = get_broadcast_network(competition)
-        tv_str = f" `[{tv_channel}]`" if tv_channel else ""
+    payload_text = "\n".join(lines)
 
-        # 1. LIVE GAMES
-        if status_state == "in" and period > 0:
-            clock = event["status"].get("displayClock", "0:00")
-            clock_seconds = parse_clock_to_seconds(clock)
-
-            home_wp, away_wp = get_game_win_probability(game_id)
-            watch_score = calculate_watchability_score(event, diff, home_wp, away_wp)
-
-            if watch_score > 900:
-                period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
-
-                if period >= 4 and diff <= 8:
-                    icon = "🚨"
-                elif diff >= 18:
-                    icon = "⚠️"  # Upset Alert Icon for Blowouts
-                elif period >= 3 and diff <= 8:
-                    icon = "🔥"
-                else:
-                    icon = "🏈"
-
-                game_str = f"{icon} **{period_label} {clock}**  |  **{away_disp}** {away_score} @ **{home_disp}** {home_score}{tv_str}\n└ *(Diff: {diff} pts)*  `[{watch_score} pts]`"
-
-                active_close_games.append({
-                    "str": game_str,
-                    "watch_score": watch_score,
-                    "period": period,
-                    "diff": diff,
-                    "clock_seconds": clock_seconds
-                })
-
-        # 2. UPCOMING GAMES
-        elif status_state == "pre":
-            upcoming_score = calculate_upcoming_game_impact(event)
-            if upcoming_score >= 800:
-                start_time_detail = event["status"]["type"].get("shortDetail", "")
-                upcoming_str = f"⏰ **{start_time_detail}**  |  **{away_disp}** @ **{home_disp}**{tv_str}"
-                upcoming_impact_games.append({
-                    "str": upcoming_str,
-                    "score": upcoming_score
-                })
-
-        # 3. COMPLETED GAMES
-        elif status_state == "post":
-            impact_score = calculate_playoff_impact(event)
-            
-            if impact_score >= 300:
-                if away_score > home_score:
-                    final_str = f"🏁 **FINAL**  |  **{away_disp} {away_score}**, {home_disp} {home_score}"
-                else:
-                    final_str = f"🏁 **FINAL**  |  **{home_disp} {home_score}**, {away_disp} {away_score}"
-
-                completed_impact_games.append({
-                    "str": final_str,
-                    "impact_score": impact_score
-                })
-
-    active_close_games.sort(
-        key=lambda g: (-g["watch_score"], -g["period"], g["diff"], g["clock_seconds"])
-    )
-
-    upcoming_impact_games.sort(key=lambda g: -g["score"])
-    top_upcoming = upcoming_impact_games[:5]
-
-    completed_impact_games.sort(key=lambda g: -g["impact_score"])
-    top_finals = completed_impact_games[:15]
-
-    content_sections = []
-
-    if active_close_games:
-        live_text = "\n\n".join([g["str"] for g in active_close_games])
-        content_sections.append(f"### 🔥 LIVE GAMES\n{live_text}")
+    # Send to Discord Webhook
+    if DISCORD_WEBHOOK_URL:
+        res = requests.post(DISCORD_WEBHOOK_URL, json={"content": payload_text})
+        if res.status_code in [200, 204]:
+            print(f"[{get_cst_now()}] Successfully pushed updates to Discord in CST.")
+        else:
+            print(f"Discord Webhook Failed: {res.status_code} - {res.text}")
     else:
-        content_sections.append("### 🔥 LIVE GAMES\n*No active FBS games currently with watchability over 900 points.*")
-
-    if top_upcoming:
-        upcoming_text = "\n".join([g["str"] for g in top_upcoming])
-        content_sections.append(f"### 📅 BIG UPCOMING GAMES\n{upcoming_text}")
-
-    if top_finals:
-        finals_text = "\n".join([g["str"] for g in top_finals])
-        content_sections.append(f"### 🏆 KEY PLAYOFF FINALS\n{finals_text}")
-
-    description_text = "\n\n---\n\n".join(content_sections)
-
-    central_tz = ZoneInfo("America/Chicago")
-    now_str = datetime.now(central_tz).strftime("%b %d, %Y at %I:%M %p %Z")
-
-    # Add this line right before embed_payload is created:
-    export_scores_json(active_close_games, now_str)
-    
-    embed_payload = {
-        "embeds": [
-            {
-                "title": "🏈 ESPN FBS LIVE SCOREBOARD",
-                "description": description_text,
-                "color": 15158332 if active_close_games else 3447003,
-                "footer": {
-                    "text": f"Live updates every 5 mins • {len(active_close_games)} active tracked game(s) • Last updated: {now_str}"
-                }
-            }
-        ]
-    }
-
-    new_message_id = update_discord_dashboard(message_id, embed_payload)
-    if new_message_id:
-        state["dashboard_message_id"] = new_message_id
-        save_state(state)
+        print("Error: DISCORD_WEBHOOK_URL environment variable is missing.")
 
 if __name__ == "__main__":
-    process_games()
+    fetch_and_notify()
