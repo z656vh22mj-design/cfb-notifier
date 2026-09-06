@@ -235,6 +235,25 @@ def update_discord_dashboard(message_id, embed_payload):
         return new_id
     return None
 
+def export_scores_json(active_close_games, now_str):
+    """Saves top live games to a lightweight JSON file for the iPhone widget."""
+    output_data = {
+        "updated_at": now_str,
+        "active_games": [
+            {
+                "str": g["str"],
+                "watch_score": g["watch_score"]
+            }
+            for g in active_close_games[:3]  # Keep top 3 games
+        ]
+    }
+    try:
+        with open("scores.json", "w") as f:
+            json.dump(output_data, f, indent=2)
+        print("Exported scores.json successfully.")
+    except Exception as e:
+        print(f"Error exporting scores.json: {e}")
+
 def process_games():
     state = load_state()
     message_id = state.get("dashboard_message_id")
@@ -362,6 +381,9 @@ def process_games():
     central_tz = ZoneInfo("America/Chicago")
     now_str = datetime.now(central_tz).strftime("%b %d, %Y at %I:%M %p %Z")
 
+    # Add this line right before embed_payload is created:
+    export_scores_json(active_close_games, now_str)
+    
     embed_payload = {
         "embeds": [
             {
