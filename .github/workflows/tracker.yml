@@ -7,6 +7,9 @@ on:
     - cron: '*/5 0-3 * * 0'
   workflow_dispatch: # Allows manual testing anytime
 
+permissions:
+  contents: write
+
 jobs:
   check-scores:
     runs-on: ubuntu-latest
