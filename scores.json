@@ -1,4 +1,13 @@
 {
-  "updated_at": "Sep 06, 2026 at 05:48 PM CDT",
-  "active_games": []
+  "updated_at": "Sep 06, 2026 at 07:35 PM CDT",
+  "active_games": [
+    {
+      "str": "\ud83c\udfc8 **Q2 14:51**  |  **#24 LOU** 3 @ **#9 MISS** 3 `[ABC]`\n\u2514 *(Diff: 0 pts)*  `[1259 pts]`",
+      "watch_score": 1259
+    },
+    {
+      "str": "\ud83c\udfc8 **Q1 0:13**  |  **WIS** 3 @ **#4 ND** 10 `[NBC]`\n\u2514 *(Diff: 7 pts)*  `[1015 pts]`",
+      "watch_score": 1015
+    }
+  ]
 }
