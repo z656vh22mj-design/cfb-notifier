@@ -72,13 +72,12 @@ def parse_clock_to_seconds(clock_str):
         return 0
 
 def calculate_watchability(game):
-    """Calculates watchability score prioritizing high-profile matchups over low-tier close games."""
+    """Calculates game watchability prioritizing high-rank upset alerts and tight margins."""
     status = game["status"]["type"]["state"]
-    competition = game["competitions"][0]
-    
     if status == "post":
         return 0
 
+    competition = game["competitions"][0]
     home = competition["competitors"][0]
     away = competition["competitors"][1]
 
@@ -86,59 +85,52 @@ def calculate_watchability(game):
     away_score = int(away.get("score", 0))
     diff = abs(home_score - away_score)
 
+    # Any game at or above a 17-point lead (3-score game) drops off immediate watch status
+    if diff >= 17:
+        return 0
+
     home_rank = home.get("curatedRank", {}).get("current", 99)
     away_rank = away.get("curatedRank", {}).get("current", 99)
 
-    # Extract conferences/leagues to filter FCS / lower-tier games
-    home_group = home.get("team", {}).get("conferenceId", "")
-    away_group = away.get("team", {}).get("conferenceId", "")
+    # 1. BASELINE PRESTIGE (Power 4 vs Group of 5 / FCS)
+    # Give a minor baseline boost to Power 4 conference matchups
+    home_conf = str(home.get("team", {}).get("conferenceId", ""))
+    away_conf = str(away.get("team", {}).get("conferenceId", ""))
     
-    # Identify FCS or low-tier teams (ESPN curatedRank > 100 or specific FCS flags)
-    is_fcs = (home_rank > 100 or away_rank > 100) or ("FCS" in str(home_group) or "FCS" in str(away_group))
+    score = 100  # Default base score for any active game
+    
+    # Power 4 conference IDs (ACC: 1, SEC: 8, Big Ten: 5, Big 12: 4)
+    p4_confs = {"1", "4", "5", "8"}
+    if home_conf in p4_confs or away_conf in p4_confs:
+        score += 50
+    if home_conf in p4_confs and away_conf in p4_confs:
+        score += 50
 
-    score = 0
+    # 2. SCORE DIFFERENTIAL SCALING
+    # Linear scale: Tie game gets +500 pts, 3-pt game gets +440 pts, 7-pt game gets +360 pts
+    score += max(0, 500 - (diff * 20))
 
-    # 1. RANKING & BLUE-BLOOD WEIGHT (Base Value)
-    # Ranked vs Ranked gets massive priority (e.g., #10 OU vs #16 MICH gets +600 baseline)
+    # 3. DYNAMIC UPSET ALERT (Rank-Scaled trailing bonus)
+    # Checks if a Top 25 team is tied or trailing in the 2nd half
+    period = game["status"].get("period", 1)
+    if status == "in" and period >= 3:
+        # Check Home Team Upset Threat
+        if home_rank <= 25 and home_score <= away_score:
+            # #1 team trailing gets +1200 pts; #25 team trailing gets +240 pts
+            upset_bonus = (26 - home_rank) * 50
+            score += upset_bonus
+
+        # Check Away Team Upset Threat
+        if away_rank <= 25 and away_score <= home_score:
+            upset_bonus = (26 - away_rank) * 50
+            score += upset_bonus
+
+    # 4. RANKED VS RANKED MATCHUPS
+    # Boost top matchups so close ranked games stay ahead of low-tier games
     if home_rank <= 25 and away_rank <= 25:
-        score += 600
-    elif home_rank <= 25 or away_rank <= 25:
         score += 300
 
-    # Add extra points for top-tier rankings (Top 10 games get huge boosts)
-    if home_rank <= 10:
-        score += (11 - home_rank) * 25
-    if away_rank <= 10:
-        score += (11 - away_rank) * 25
-
-    # 2. GAME STATUS & SCORE DIFFERENTIAL
-    if status == "in":
-        period = game["status"].get("period", 1)
-        score += 200  # Base live game bonus
-
-        # Tight score bonuses (scaled down slightly so rank still dominates)
-        if diff <= 7:
-            score += 250
-        elif diff <= 14:
-            score += 100
-
-        # Late-game excitement bonus
-        if period >= 3 and diff <= 8:
-            score += 200
-        if period == 4 and diff <= 7:
-            score += 300
-
-    # 3. PENALTIES & UPSET MODIFIERS
-    # Heavy penalty for FCS / low-tier blowouts or non-compelling mid-major games
-    if is_fcs:
-        # Subtract 400 pts so G-Webb/Liberty stays hidden unless it's a close 4th Q upset
-        score -= 400
-
-    # Severe penalty for blowouts (diff > 21) in the 2nd half
-    if status == "in" and game["status"].get("period", 1) >= 3 and diff > 21:
-        score -= 300
-
-    return max(0, score)
+    return score
 
 def calculate_playoff_impact(event):
     competitors = event["competitions"][0]["competitors"]
