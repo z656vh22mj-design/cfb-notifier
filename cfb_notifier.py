@@ -289,7 +289,7 @@ def process_games():
             clock_seconds = parse_clock_to_seconds(clock)
 
             home_wp, away_wp = get_game_win_probability(game_id)
-            watch_score = calculate_watchability(game)
+            watch_score = calculate_watchability(event)
 
             if watch_score > 900:
                 period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
