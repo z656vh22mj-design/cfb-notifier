@@ -71,85 +71,74 @@ def parse_clock_to_seconds(clock_str):
     except Exception:
         return 0
 
-def calculate_watchability_score(event, diff, home_wp, away_wp):
-    period = int(event["status"].get("period", 1))
-    clock_str = event["status"].get("displayClock", "0:00")
-    clock_seconds = parse_clock_to_seconds(clock_str)
+def calculate_watchability(game):
+    """Calculates watchability score prioritizing high-profile matchups over low-tier close games."""
+    status = game["status"]["type"]["state"]
+    competition = game["competitions"][0]
+    
+    if status == "post":
+        return 0
 
-    competitors = event["competitions"][0]["competitors"]
-    home = next(c for c in competitors if c["homeAway"] == "home")
-    away = next(c for c in competitors if c["homeAway"] == "away")
+    home = competition["competitors"][0]
+    away = competition["competitors"][1]
 
     home_score = int(home.get("score", 0))
     away_score = int(away.get("score", 0))
+    diff = abs(home_score - away_score)
 
-    home_rank = int(home.get("curatedRank", {}).get("current", 99))
-    away_rank = int(away.get("curatedRank", {}).get("current", 99))
+    home_rank = home.get("curatedRank", {}).get("current", 99)
+    away_rank = away.get("curatedRank", {}).get("current", 99)
 
-    score = 0.0
+    # Extract conferences/leagues to filter FCS / lower-tier games
+    home_group = home.get("team", {}).get("conferenceId", "")
+    away_group = away.get("team", {}).get("conferenceId", "")
+    
+    # Identify FCS or low-tier teams (ESPN curatedRank > 100 or specific FCS flags)
+    is_fcs = (home_rank > 100 or away_rank > 100) or ("FCS" in str(home_group) or "FCS" in str(away_group))
 
-    # 1. Base Score from Quarter
-    score += period * 100
+    score = 0
 
-    # 2. Closeness Bonus
-    if diff <= 8:
+    # 1. RANKING & BLUE-BLOOD WEIGHT (Base Value)
+    # Ranked vs Ranked gets massive priority (e.g., #10 OU vs #16 MICH gets +600 baseline)
+    if home_rank <= 25 and away_rank <= 25:
+        score += 600
+    elif home_rank <= 25 or away_rank <= 25:
         score += 300
-    elif diff <= 17:
-        score += 100
 
-    # 3. Live Win Probability Closeness Boost
-    if home_wp is not None:
-        wp_margin = abs(home_wp - 0.50)
-        wp_closeness_bonus = max(0.0, (0.50 - wp_margin) * 1000)
-        score += wp_closeness_bonus
+    # Add extra points for top-tier rankings (Top 10 games get huge boosts)
+    if home_rank <= 10:
+        score += (11 - home_rank) * 25
+    if away_rank <= 10:
+        score += (11 - away_rank) * 25
 
-    # 4. Late-Game Drama Boost
-    if period >= 4 and diff <= 8:
-        time_elapsed_pct = (900 - min(clock_seconds, 900)) / 900.0
-        late_game_boost = 2000.0 + (time_elapsed_pct * 1500.0)
-        if period > 4:
-            late_game_boost += 1500.0
-        score += late_game_boost
+    # 2. GAME STATUS & SCORE DIFFERENTIAL
+    if status == "in":
+        period = game["status"].get("period", 1)
+        score += 200  # Base live game bonus
 
-    # 5. Determine Underdog Status
-    is_underdog_leading = False
-    spread_val = 0.0
+        # Tight score bonuses (scaled down slightly so rank still dominates)
+        if diff <= 7:
+            score += 250
+        elif diff <= 14:
+            score += 100
 
-    try:
-        odds = event["competitions"][0].get("odds", [])
-        if odds:
-            spread_val = abs(float(odds[0].get("spread", 0)))
-    except Exception:
-        pass
+        # Late-game excitement bonus
+        if period >= 3 and diff <= 8:
+            score += 200
+        if period == 4 and diff <= 7:
+            score += 300
 
-    if home_score > away_score and home_rank > away_rank + 10:
-        is_underdog_leading = True
-    elif away_score > home_score and away_rank > home_rank + 10:
-        is_underdog_leading = True
+    # 3. PENALTIES & UPSET MODIFIERS
+    # Heavy penalty for FCS / low-tier blowouts or non-compelling mid-major games
+    if is_fcs:
+        # Subtract 400 pts so G-Webb/Liberty stays hidden unless it's a close 4th Q upset
+        score -= 400
 
-    if home_wp is not None and home_score != away_score:
-        if home_score > away_score and home_wp < 0.40:
-            is_underdog_leading = True
-        elif away_score > home_score and away_wp < 0.40:
-            is_underdog_leading = True
+    # Severe penalty for blowouts (diff > 21) in the 2nd half
+    if status == "in" and game["status"].get("period", 1) >= 3 and diff > 21:
+        score -= 300
 
-    min_rank = min(home_rank, away_rank)
-    if min_rank <= 10:
-        score += 300
-    elif min_rank <= 25:
-        score += 100
-
-    # 6. Underdog Bonuses
-    if diff <= 14 and is_underdog_leading:
-        underdog_boost = 600.0 + (spread_val * 20.0)
-        score += underdog_boost
-
-    # 7. Blowout Upset Bonus (Underdog leading a ranked team by 18+ points)
-    if diff >= 18 and is_underdog_leading and min_rank <= 25:
-        score += 500.0
-
-    score += 50
-    return int(score)
+    return max(0, score)
 
 def calculate_playoff_impact(event):
     competitors = event["competitions"][0]["competitors"]
