@@ -1,9 +1,13 @@
 {
-  "updated_at": "Sep 12, 2026 at 04:19 PM CDT",
+  "updated_at": "Sep 12, 2026 at 04:32 PM CDT",
   "active_games": [
     {
       "str": "\ud83d\udd25 **Q3 15:00**  |  **DUKE** 21 @ **ILL** 24 `[FS1]`\n\u2514 *(Diff: 3 pts)*  `[552.0 pts]`",
       "watch_score": 552.0
+    },
+    {
+      "str": "\ud83d\udd25 **Q3 12:04**  |  **USU** 7 @ **#19 WASH** 10 `[BTN]`\n\u2514 *(Diff: 3 pts)*  `[502.0 pts]`",
+      "watch_score": 502.0
     }
   ]
 }
