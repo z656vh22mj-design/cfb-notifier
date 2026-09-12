@@ -291,7 +291,7 @@ def process_games():
             home_wp, away_wp = get_game_win_probability(game_id)
             watch_score = calculate_watchability(event)
 
-            if watch_score > 900:
+            if watch_score > 700:
                 period_label = f"OT{period - 4}" if period > 4 else f"Q{period}"
 
                 if period >= 4 and diff <= 8:
