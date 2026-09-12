@@ -1,9 +1,13 @@
 {
-  "updated_at": "Sep 12, 2026 at 11:14 AM CDT",
+  "updated_at": "Sep 12, 2026 at 11:30 AM CDT",
   "active_games": [
     {
-      "str": "\ud83c\udfc8 **Q1 11:47**  |  **GWEB** 3 @ **LIB** 0 `[ESPN+]`\n\u2514 *(Diff: 3 pts)*  `[1147 pts]`",
-      "watch_score": 1147
+      "str": "\ud83c\udfc8 **Q1 3:14**  |  **WAKE** 7 @ **PUR** 7 `[FS1]`\n\u2514 *(Diff: 0 pts)*  `[926 pts]`",
+      "watch_score": 926
+    },
+    {
+      "str": "\ud83c\udfc8 **Q1 7:21**  |  **#11 OU** 0 @ **MICH** 0 `[FOX]`\n\u2514 *(Diff: 0 pts)*  `[913 pts]`",
+      "watch_score": 913
     }
   ]
 }
