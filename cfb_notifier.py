@@ -106,9 +106,19 @@ def calculate_watchability(game):
     if home_conf in p4_confs and away_conf in p4_confs:
         score += 50
 
-    # 2. SCORE DIFFERENTIAL SCALING
-    # Linear scale: Tie game gets +500 pts, 3-pt game gets +440 pts, 7-pt game gets +360 pts
-    score += max(0, 500 - (diff * 20))
+        # 2. SCORE DIFFERENTIAL SCALING (Quarter Weighted)
+    period = game["status"].get("period", 1)
+
+    # Differential score (Max 500 at 0 diff, 360 at 7 diff)
+    base_diff_score = max(0, 500 - (diff * 20))
+
+    # Weight by quarter so late-game close scores outrank Q1 kickoff close scores
+    # Q1 = 0.4x weight, Q2 = 0.6x weight, Q3 = 0.8x weight, Q4/OT = 1.2x weight
+    period_multipliers = {1: 0.4, 2: 0.6, 3: 0.8, 4: 1.2, 5: 1.3}
+    period_weight = period_multipliers.get(period, 1.0)
+
+    score += (base_diff_score * period_weight)
+
 
     # 3. DYNAMIC UPSET ALERT (Rank-Scaled trailing bonus)
     # Checks if a Top 25 team is tied or trailing in the 2nd half
