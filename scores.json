@@ -1,17 +1,17 @@
 {
-  "updated_at": "Sep 12, 2026 at 08:58 PM CDT",
+  "updated_at": "Sep 12, 2026 at 09:18 PM CDT",
   "active_games": [
     {
-      "str": "\ud83d\udd25 **Q3 1:43**  |  **ISU** 13 @ **#21 IOWA** 10 `[NBC]`\n\u2514 *(Diff: 3 pts)*  `[802.0 pts]`",
-      "watch_score": 802.0
+      "str": "\ud83d\udd25 **Q3 0:26**  |  **#13 TTU** 21 @ **ORST** 21 `[CBS]`\n\u2514 *(Diff: 0 pts)*  `[1200.0 pts]`",
+      "watch_score": 1200.0
     },
     {
-      "str": "\ud83d\udea8 **Q4 7:20**  |  **MTSU** 20 @ **MRSH** 21 `[ESPN+]`\n\u2514 *(Diff: 1 pts)*  `[676.0 pts]`",
-      "watch_score": 676.0
+      "str": "\ud83d\udea8 **Q4 10:28**  |  **ISU** 13 @ **#21 IOWA** 10 `[NBC]`\n\u2514 *(Diff: 3 pts)*  `[978.0 pts]`",
+      "watch_score": 978.0
     },
     {
-      "str": "\ud83d\udea8 **Q4 4:38**  |  **USA** 24 @ **TULN** 21 `[ESPN+]`\n\u2514 *(Diff: 3 pts)*  `[628.0 pts]`",
-      "watch_score": 628.0
+      "str": "\ud83d\udea8 **Q4 0:50**  |  **MTSU** 26 @ **MRSH** 28 `[ESPN+]`\n\u2514 *(Diff: 2 pts)*  `[652.0 pts]`",
+      "watch_score": 652.0
     }
   ]
 }
