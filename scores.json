@@ -1,17 +1,17 @@
 {
-  "updated_at": "Sep 12, 2026 at 09:33 PM CDT",
+  "updated_at": "Sep 12, 2026 at 09:47 PM CDT",
   "active_games": [
     {
-      "str": "\ud83c\udfc8 **Q4 11:45**  |  **#1 OSU** 23 @ **#4 TEX** 10 `[ABC]`\n\u2514 *(Diff: 13 pts)*  `[1888.0 pts]`",
-      "watch_score": 1888.0
+      "str": "\ud83d\udea8 **Q4 6:50**  |  **#1 OSU** 23 @ **#4 TEX** 17 `[ABC]`\n\u2514 *(Diff: 6 pts)*  `[2056.0 pts]`",
+      "watch_score": 2056.0
     },
     {
-      "str": "\ud83d\udea8 **Q4 11:51**  |  **#13 TTU** 21 @ **ORST** 24 `[CBS]`\n\u2514 *(Diff: 3 pts)*  `[1328.0 pts]`",
-      "watch_score": 1328.0
-    },
-    {
-      "str": "\ud83d\udea8 **Q4 4:58**  |  **ISU** 13 @ **#21 IOWA** 13 `[NBC]`\n\u2514 *(Diff: 0 pts)*  `[1050.0 pts]`",
+      "str": "\ud83d\udea8 **Q4 0:15**  |  **ISU** 13 @ **#21 IOWA** 13 `[NBC]`\n\u2514 *(Diff: 0 pts)*  `[1050.0 pts]`",
       "watch_score": 1050.0
+    },
+    {
+      "str": "\ud83d\udea8 **Q4 6:31**  |  **#13 TTU** 28 @ **ORST** 24 `[CBS]`\n\u2514 *(Diff: 4 pts)*  `[654.0 pts]`",
+      "watch_score": 654.0
     }
   ]
 }
