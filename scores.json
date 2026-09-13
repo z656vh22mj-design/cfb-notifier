@@ -1,9 +1,13 @@
 {
-  "updated_at": "Sep 12, 2026 at 07:20 PM CDT",
+  "updated_at": "Sep 12, 2026 at 07:41 PM CDT",
   "active_games": [
     {
-      "str": "\ud83c\udfc8 **Q1 5:39**  |  **#1 OSU** 10 @ **#4 TEX** 0 `[ABC]`\n\u2514 *(Diff: 10 pts)*  `[620.0 pts]`",
-      "watch_score": 620.0
+      "str": "\ud83c\udfc8 **Q2 9:48**  |  **#1 OSU** 10 @ **#4 TEX** 0 `[ABC]`\n\u2514 *(Diff: 10 pts)*  `[680.0 pts]`",
+      "watch_score": 680.0
+    },
+    {
+      "str": "\ud83d\udea8 **Q4 10:24**  |  **JVST** 24 @ **OHIO** 17 `[ESPN+]`\n\u2514 *(Diff: 7 pts)*  `[532.0 pts]`",
+      "watch_score": 532.0
     }
   ]
 }
