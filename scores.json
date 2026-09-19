@@ -1,9 +1,17 @@
 {
-  "updated_at": "Sep 19, 2026 at 01:46 PM CDT",
+  "updated_at": "Sep 19, 2026 at 01:58 PM CDT",
   "active_games": [
     {
-      "str": "\ud83d\udea8 **Q4 15:00**  |  **UNC** 17 @ **CLEM** 15 `[ESPN]`\n\u2514 *(Diff: 2 pts)*  `[752.0 pts]`",
+      "str": "\ud83d\udea8 **Q4 9:08**  |  **UNC** 17 @ **CLEM** 15 `[ESPN]`\n\u2514 *(Diff: 2 pts)*  `[752.0 pts]`",
       "watch_score": 752.0
+    },
+    {
+      "str": "\ud83c\udfc8 **Q4 13:31**  |  **ASU** 17 @ **KU** 7 `[FS1]`\n\u2514 *(Diff: 10 pts)*  `[560.0 pts]`",
+      "watch_score": 560.0
+    },
+    {
+      "str": "\ud83d\udea8 **Q4 14:20**  |  **UNT** 28 @ **TXST** 35 `[USA Net]`\n\u2514 *(Diff: 7 pts)*  `[532.0 pts]`",
+      "watch_score": 532.0
     }
   ]
 }
