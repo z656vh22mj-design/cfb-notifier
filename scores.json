@@ -1,9 +1,17 @@
 {
-  "updated_at": "Sep 19, 2026 at 09:47 PM CDT",
+  "updated_at": "Sep 19, 2026 at 09:59 PM CDT",
   "active_games": [
     {
-      "str": "\ud83d\udea8 **Q4 11:21**  |  **#7 LSU** 24 @ **#8 MISS** 24 `[ABC]`\n\u2514 *(Diff: 0 pts)*  `[2950.0 pts]`",
+      "str": "\ud83d\udea8 **Q4 6:20**  |  **#7 LSU** 24 @ **#8 MISS** 24 `[ABC]`\n\u2514 *(Diff: 0 pts)*  `[2950.0 pts]`",
       "watch_score": 2950.0
+    },
+    {
+      "str": "\ud83c\udfc8 **Q4 0:00**  |  **WVU** 38 @ **#25 UVA** 27 `[ACC Network]`\n\u2514 *(Diff: 11 pts)*  `[586.0 pts]`",
+      "watch_score": 586.0
+    },
+    {
+      "str": "\ud83c\udfc8 **Q4 5:34**  |  **VT** 35 @ **MD** 26 `[FS1]`\n\u2514 *(Diff: 9 pts)*  `[584.0 pts]`",
+      "watch_score": 584.0
     }
   ]
 }
