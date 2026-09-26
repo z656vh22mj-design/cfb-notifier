@@ -1,9 +1,13 @@
 {
-  "updated_at": "Sep 26, 2026 at 12:47 PM CDT",
+  "updated_at": "Sep 26, 2026 at 12:59 PM CDT",
   "active_games": [
     {
       "str": "\ud83c\udfc8 **Q2 0:00**  |  **#1 TEX** 10 @ **#14 TENN** 3 `[ABC]`\n\u2514 *(Diff: 7 pts)*  `[716.0 pts]`",
       "watch_score": 716.0
+    },
+    {
+      "str": "\ud83d\udd25 **Q3 11:58**  |  **VT** 6 @ **BC** 0 `[ACC Network]`\n\u2514 *(Diff: 6 pts)*  `[504.0 pts]`",
+      "watch_score": 504.0
     }
   ]
 }
