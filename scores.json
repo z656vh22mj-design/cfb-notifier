@@ -1,17 +1,13 @@
 {
-  "updated_at": "Oct 17, 2026 at 05:42 PM CDT",
+  "updated_at": "Oct 17, 2026 at 07:25 PM CDT",
   "active_games": [
     {
-      "str": "\ud83d\udea8 **Q4 2:52**  |  **AUB** 24 @ **#1 UGA** 24 `[ESPN]`\n\u2514 *(Diff: 0 pts)*  `[2050.0 pts]`",
-      "watch_score": 2050.0
+      "str": "\ud83c\udfc8 **Q2 11:44**  |  **#18 OKST** 3 @ **#20 HOU** 7 `[Fox]`\n\u2514 *(Diff: 4 pts)*  `[752.0 pts]`",
+      "watch_score": 752.0
     },
     {
-      "str": "\ud83c\udfc8 **Q4 9:23**  |  **#6 ALA** 10 @ **#14 TENN** 19 `[ABC]`\n\u2514 *(Diff: 9 pts)*  `[1884.0 pts]`",
-      "watch_score": 1884.0
-    },
-    {
-      "str": "\ud83d\udea8 **Q4 8:32**  |  **PSU** 11 @ **MICH** 14 `[CBS]`\n\u2514 *(Diff: 3 pts)*  `[728.0 pts]`",
-      "watch_score": 728.0
+      "str": "\ud83c\udfc8 **Q2 14:26**  |  **#2 ND** 3 @ **#8 BYU** 7 `[ABC]`\n\u2514 *(Diff: 4 pts)*  `[702.0 pts]`",
+      "watch_score": 702.0
     }
   ]
 }
