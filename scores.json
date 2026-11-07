@@ -1,17 +1,17 @@
 {
-  "updated_at": "Nov 07, 2026 at 02:01 PM CST",
+  "updated_at": "Nov 07, 2026 at 05:37 PM CST",
   "active_games": [
     {
-      "str": "\ud83d\udea8 **Q4 9:50**  |  **#7 TEX** 20 @ **#18 MIZ** 20 `[ESPN]`\n\u2514 *(Diff: 0 pts)*  `[2450.0 pts]`",
-      "watch_score": 2450.0
+      "str": "\ud83c\udfc8 **Q4 9:44**  |  **#5 ALA** 24 @ **#14 LSU** 13 `[ABC]`\n\u2514 *(Diff: 11 pts)*  `[1436.0 pts]`",
+      "watch_score": 1436.0
     },
     {
-      "str": "\ud83d\udea8 **Q4 6:51**  |  **#9 BYU** 20 @ **#3 UTAH** 28 `[ABC]`\n\u2514 *(Diff: 8 pts)*  `[1758.0 pts]`",
-      "watch_score": 1758.0
+      "str": "\ud83d\udea8 **Q4 6:56**  |  **PSU** 28 @ **WASH** 25 `[FS1]`\n\u2514 *(Diff: 3 pts)*  `[728.0 pts]`",
+      "watch_score": 728.0
     },
     {
-      "str": "\ud83d\udea8 **Q4 5:05**  |  **FSU** 24 @ **BC** 24 `[ACC Network]`\n\u2514 *(Diff: 0 pts)*  `[800.0 pts]`",
-      "watch_score": 800.0
+      "str": "\ud83c\udfc8 **Q1 8:21**  |  **#6 UK** 0 @ **#13 TENN** 0 `[ESPN]`\n\u2514 *(Diff: 0 pts)*  `[700.0 pts]`",
+      "watch_score": 700.0
     }
   ]
 }
