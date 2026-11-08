@@ -1,9 +1,13 @@
 {
-  "updated_at": "Nov 07, 2026 at 08:42 PM CST",
+  "updated_at": "Nov 07, 2026 at 11:17 PM CST",
   "active_games": [
     {
-      "str": "\ud83d\udd25 **Q3 8:11**  |  **OU** 13 @ **#24 FLA** 7 `[SEC Network]`\n\u2514 *(Diff: 6 pts)*  `[604.0 pts]`",
-      "watch_score": 604.0
+      "str": "\ud83d\udd25 **Q3 1:12**  |  **WVU** 48 @ **#15 TTU** 41 `[ESPN]`\n\u2514 *(Diff: 7 pts)*  `[1038.0 pts]`",
+      "watch_score": 1038.0
+    },
+    {
+      "str": "\ud83d\udea8 **Q4 11:20**  |  **HAW** 10 @ **UTEP** 7 `[FS1]`\n\u2514 *(Diff: 3 pts)*  `[628.0 pts]`",
+      "watch_score": 628.0
     }
   ]
 }
