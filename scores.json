@@ -1,4 +1,13 @@
 {
-  "updated_at": "Nov 14, 2026 at 02:31 PM CST",
-  "active_games": []
+  "updated_at": "Nov 14, 2026 at 06:12 PM CST",
+  "active_games": [
+    {
+      "str": "\ud83d\udea8 **Q4 9:50**  |  **TULN** 20 @ **RICE** 17 `[ESPN+]`\n\u2514 *(Diff: 3 pts)*  `[628.0 pts]`",
+      "watch_score": 628.0
+    },
+    {
+      "str": "\ud83d\udea8 **Q4 3:30**  |  **FRES** 35 @ **TXST** 31 `[CW]`\n\u2514 *(Diff: 4 pts)*  `[604.0 pts]`",
+      "watch_score": 604.0
+    }
+  ]
 }
