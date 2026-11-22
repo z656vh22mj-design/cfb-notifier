@@ -1,4 +1,13 @@
 {
-  "updated_at": "Nov 21, 2026 at 03:31 PM CST",
-  "active_games": []
+  "updated_at": "Nov 21, 2026 at 07:32 PM CST",
+  "active_games": [
+    {
+      "str": "\ud83d\udd25 **Q3 7:26**  |  **MD** 14 @ **#18 USC** 13 `[BTN]`\n\u2514 *(Diff: 1 pts)*  `[984.0 pts]`",
+      "watch_score": 984.0
+    },
+    {
+      "str": "\ud83c\udfc8 **Q2 13:58**  |  **#1 UGA** 3 @ **#21 SC** 6 `[ABC]`\n\u2514 *(Diff: 3 pts)*  `[764.0 pts]`",
+      "watch_score": 764.0
+    }
+  ]
 }
